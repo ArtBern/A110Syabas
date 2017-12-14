@@ -24,9 +24,9 @@ endif
 #MINOR_REVISION:=9
 #SUBLEVEL:=27
 #VERSION:=$(MAJOR_REVISION).$(MINOR_REVISION).$(SUBLEVEL)
-VERSION:=$(shell echo $(BR2_UCLIBC_VERSION))
-UCLIBC_DIR:=$(TOOL_BUILD_DIR)/uClibc-$(VERSION)
-UCLIBC_SOURCE:=uClibc-$(VERSION).tar.bz2
+UC_VERSION:=$(shell echo $(BR2_UCLIBC_VERSION))
+UCLIBC_DIR:=$(TOOL_BUILD_DIR)/uClibc-$(UC_VERSION)
+UCLIBC_SOURCE:=uClibc-$(UC_VERSION).tar.bz2
 UCLIBC_SITE:=$(DOWNLOAD_SITE)
 #endif
 
@@ -54,14 +54,14 @@ $(UCLIBC_DIR)/.unpacked: $(DL_DIR)/$(UCLIBC_SOURCE)
 	bzcat $(DL_DIR)/$(UCLIBC_SOURCE) | tar -C $(TOOL_BUILD_DIR) $(TAR_OPTIONS) -
 	touch $(UCLIBC_DIR)/.unpacked
 
-UCLIBC_PATCH_LIST := $(wildcard $(BASE_DIR)/toolchain/uClibc/patches/*$(VERSION)*.patch)
+UCLIBC_PATCH_LIST := $(wildcard $(BASE_DIR)/toolchain/uClibc/patches/*$(UC_VERSION)*.patch)
 
 .PHONY: uclibc-echo-patch-list
 uclibc-echo-patch-list:
 	@echo $(UCLIBC_PATCH_LIST)
 
 $(UCLIBC_DIR)/.patched: $(UCLIBC_DIR)/.unpacked $(UCLIBC_PATCH_LIST)
-	toolchain/patch-kernel.sh $(UCLIBC_DIR) toolchain/uClibc \patches/*$(VERSION)*.patch
+	toolchain/patch-kernel.sh $(UCLIBC_DIR) toolchain/uClibc \patches/*$(UC_VERSION)*.patch
 	touch $@
 
 .PHONY: uclibc-patched

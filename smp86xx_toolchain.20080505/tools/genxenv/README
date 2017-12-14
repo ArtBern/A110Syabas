@@ -1,0 +1,84 @@
+This tool (genxenv) is used to generate an xenv bloc.
+
+Sample use:
+
+## Help :
+$ ./genxenv
+invalid command line
+Usage: genxenv <cmd> <xenvfile> [<key>] [<filename>]
+<cmd>     : one of the following
+  l : list key/value pairs
+  g : get value for key
+  s : set key/value pair
+  d : delete key
+  f : format
+  c : check
+<key>     : xenv key (string)
+<filename>: file to use to read/write values, default
+            to stdin and stdout
+
+## Create (format) a new xenv:
+$ ./genxenv f zboot.xenv
+Loaded xenv file, xenvsize = 0
+Saving xenv file, xenvsize = 24
+
+## Add an entry (set), reading value from file /etc/hostname:
+$ ./genxenv s zboot.xenv host /etc/hostname
+Loaded xenv file, xenvsize = 24
+Read value file, size = 13
+[host], length 13
+Saving xenv file, xenvsize = 44
+
+## Add an entry (set), interactively reading from stdin
+$ ./genxenv s zboot.xenv ip
+Loaded xenv file, xenvsize = 44
+Reading value from stdin
+192.168.1.1
+Read value file, size = 12
+[ip], length 12
+Saving xenv file, xenvsize = 61
+
+## Add an entry (set), with a dword value using tobin.bash:
+$ tobin.bash `printf "%08x" 2005` | ./genxenv s zboot.xenv version
+Loaded xenv file, xenvsize = 61
+Reading value from stdin
+Read value file, size = 4
+[version], length 4
+Saving xenv file, xenvsize = 75
+
+## List entries:
+$ ./genxenv l zboot.xenv
+Loaded xenv file, xenvsize = 75
+(0x00)    20 host
+(0x00)    17 ip
+(0x00)    14 version
+3 records, 75 bytes
+
+Saving xenv file, xenvsize = 75
+
+## Delete an entry:
+$ ./genxenv d zboot.xenv version
+Loaded xenv file, xenvsize = 75
+[version], length 0
+deleting record
+Saving xenv file, xenvsize = 61
+
+## Print (get) an entry (get) to stdout:
+$ ./genxenv g zboot.xenv ip
+Loaded xenv file, xenvsize = 75
+192.168.1.1
+Wrote value file, size = 12
+Saving xenv file, xenvsize = 75
+
+## Write (get) an entry value to a file:
+$ ./genxenv g zboot.xenv host hostname
+Loaded xenv file, xenvsize = 75
+Wrote value file, size = 13
+Saving xenv file, xenvsize = 75
+
+## Check validity:
+$ ./genxenv c zboot.xenv
+Loaded xenv file, xenvsize = 75
+valid xenv, size=75
+Saving xenv file, xenvsize = 75
+

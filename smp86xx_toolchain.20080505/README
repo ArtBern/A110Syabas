@@ -1,0 +1,68 @@
+This is the Sigma Designs release of the MIPS toolchain customized for the
+SMP86xx family of chips.
+
+Contents
+1) Configuration
+2) Build
+3) Use
+
+1) Configuration
+
+The toolchain is minimally configurable. In order to build the toolchain, first
+run 'make menuconfig' in order to configure your future toolchain. 
+
+The main option that you will be interested in is 'Toolchain Options --->', in
+order to set which versions of gcc, uClibc, and binutils will be used in the
+toolchain.
+Two toolchains are supported by Sigma starting:
+a) A GCC 3.4 based toolchain composed of :
+	- gcc 3.4.2
+	- binutils 2.15.91.0.2
+	- uClibc 0.9.27
+   which must be paired with busybox 1.0 from the rootfs package.
+
+b) A GCC 4.0 based toolchain composed:
+	- gcc 4.0.4
+	- binutils 2.17
+	- uClibc 0.9.28.3
+   which must be paired with busybox 1.50 from the rootfs package.
+
+These are the only two combinations of tools versions supported. By default, 
+the toolchain composed of gcc 3.4.2, binutils 2.15.91.0.2, uClibc 0.9.27 is built
+in the toolchain package, and busybox 1.00 is built by default in the rootfs package.
+
+Also of interest is the option 'Toolchain and header file location?' 
+under 'Build options', in order to choose where the toolchain will 
+be built. Please use an absolute directory for the value, although you are 
+allowed to use "well-known" variables of the build system, such as $(BASE_DIR), 
+which represents the build directory or $(BUILD_DIR), which represents the work
+directory (build_<platform>).
+
+The other option of interest under 'Build options' is 'Download site' where you
+get to decide where the source packages will be downloaded from. The default
+value is the Sigma Designs FTP server. If you have an up-to-date server that has
+better bandwidth, you can use it instead. Note that you need to enter a URL 
+suitable for wget.
+
+2) Build
+
+When the toolchain is configured to suit your particular situation, you can 
+proceed and build it. The toolchain building process is monolithic. Just run
+'make' at the prompt, and in 20 to 45 minutes, depending on the power of 
+your machine, you will get a brand new toolchain.
+
+Note: given how long it takes to build the toolchain, we recommend that at
+any given site, the toolchain be built only once and then shared over the
+network.
+
+3) Use
+
+Once your toolchain is built, a configuration file named 'toolchain-path.env'
+is created. You can then source the file in your shell (sh-compatible only) to
+add your brand new toolchain to your path.
+
+The toolchain being a cross-compilation toolchain, the usual tools (gcc, g++,
+etc.) are prefixed with an identifier for the target platform, in this case
+'mipsel-linux-'. So, in order to invoke the cross-compiling gcc, invoke
+'mipsel-linux-gcc'
+

@@ -43,6 +43,8 @@ USB_DEVICE_ID rtusb_dev_id[] = {
 	{USB_DEVICE(0x148f,0x6370)}, /* Ralink 6370 */
 	{USB_DEVICE(0x148f,0x7601)}, /* MT 6370 */
 #endif /* MT7601U */
+	{USB_DEVICE(0x0B05,0x1761)}, /* ASUS N11 */
+	{USB_DEVICE(0x1761,0x0B05)}, /* ASUS N11 */
 	{ }/* Terminating entry */
 };
 

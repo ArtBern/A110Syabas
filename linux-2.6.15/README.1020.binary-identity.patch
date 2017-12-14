@@ -1,0 +1,19 @@
+Feature:
+--------
+Removal of timing sensitive information of the build to ensure the
+binary identity doesn't change.
+
+Prerequisite patch numbers:
+---------------------------
+none
+
+Primary author:
+---------------
+Emmanuel Michon
+
+Related to which chip version SMP86xx xx=?
+------------------------------------------
+Tango2 ES6/RevA or above, or Tango3 ES1 or above
+
+(linux patches) which CONFIG_... are provided:
+----------------------------------------------

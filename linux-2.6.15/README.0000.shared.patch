@@ -1,0 +1,19 @@
+Feature:
+-------
+Common patch
+
+Prerequisite patch numbers:
+--------------------------
+None
+
+Primary author:
+--------------
+YH Lin & Emmanuel Michon
+
+Related to which chip version?
+-----------------------------
+ES6/RevA or above.
+
+(linux patches) which CONFIG_... are provided:
+---------------------------------------------
+*** TBD

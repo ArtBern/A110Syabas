@@ -1,0 +1,1 @@
+#define CONFIG_RAID_ATTRS 1

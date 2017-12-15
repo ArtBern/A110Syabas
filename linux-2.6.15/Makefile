@@ -355,7 +355,7 @@ CPPFLAGS        := -D__KERNEL__ $(LINUXINCLUDE)
 
 # [20070723] CHKong
 #include $(CUSTOMERDIR)/kconfig
-include $(RUA_DIR)/../../syabas/customer/$(customer)/kconfig
+#include $(RUA_DIR)/../../syabas/customer/$(customer)/kconfig
 
 CFLAGS 		:= -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 	  	   -fno-strict-aliasing -fno-common \

@@ -60,9 +60,10 @@
  by the user.  The parameters are:
  
 -@table @bullet
-+@table bullet
++table  bullet
  @item @var{name}
  Name of the extension instruction
+
   
 --- binutils/gas/doc/c-mips.texi
 +++ binutils/gas/doc/c-mips.texi
@@ -127,3 +128,99 @@
  Evaluate the contents of string @var{string} and assign the result as a
  string to the subsym @var{name}.  String replacement is performed on
  @var{string} before assignment.  
+--- binutils/gas/doc/as.texinfo
++++ binutils/gas/doc/as.texinfo
+@@ -3732,17 +3732,17 @@
+ * ABORT::                       @code{.ABORT}
+ @end ifset
+ 
+-* Align::                       @code{.align @var{abs-expr} , @var{abs-expr}}
++ Align::                       
+ * Altmacro::                    @code{.altmacro}
+-* Ascii::                       @code{.ascii "@var{string}"}@dots{}
++ Ascii::                       
+ * Asciz::                       @code{.asciz "@var{string}"}@dots{}
+ * Balign::                      @code{.balign @var{abs-expr} , @var{abs-expr}}
+ * Byte::                        @code{.byte @var{expressions}}
+ * Comm::                        @code{.comm @var{symbol} , @var{length} }
+ 
+-* CFI directives::		@code{.cfi_startproc}, @code{.cfi_endproc}, etc.
++ CFI directives::		, etc.
+ 
+-* Data::                        @code{.data @var{subsection}}
++ Data::                        sd
+ @ifset COFF
+ * Def::                         @code{.def @var{name}}
+ @end ifset
+@@ -3802,11 +3802,11 @@
+ * Line::                        @code{.line @var{line-number}}
+ @end ifclear
+ 
+-* Linkonce::			@code{.linkonce [@var{type}]}
++ Linkonce::			
+ * List::                        @code{.list}
+ * Ln::                          @code{.ln @var{line-number}}
+ 
+-* LNS directives::              @code{.file}, @code{.loc}, etc.
++ LNS directives::              df
+ 
+ * Long::                        @code{.long @var{expressions}}
+ @ignore
+@@ -3920,8 +3920,8 @@
+ @end ifset
+ @end ifset
+ 
+-@node Align
+-@section @code{.align @var{abs-expr}, @var{abs-expr}, @var{abs-expr}}
++node Align
++section code.align varabs-expr, var abs-expr, varabs-expr
+ 
+ @cindex padding the location counter
+ @cindex @code{align} directive
+@@ -3964,8 +3964,8 @@
+ described later, which have a consistent behavior across all
+ architectures (but are specific to GAS).
+ 
+-@node Ascii
+-@section @code{.ascii "@var{string}"}@dots{}
++node Ascii
++section code.ascii "varstring"dots
+ 
+ @cindex @code{ascii} directive
+ @cindex string literals
+@@ -4057,7 +4057,7 @@
+ @samp{@var{symbol} .comm, @var{length}}; @var{symbol} is optional.
+ @end ifset
+ 
+-@node CFI directives
++node CFI directives
+ @section @code{.cfi_startproc}
+ @cindex @code{cfi_startproc} directive
+ @code{.cfi_startproc} is used at the beginning of each function that
+@@ -4113,7 +4113,7 @@
+ might use this to add OS-specific CFI opcodes, or generic CFI
+ opcodes that GAS does not yet support.
+ 
+-@node LNS directives
++node LNS directives
+ @section @code{.file @var{fileno} @var{filename}}
+ @cindex @code{file} directive
+ When emitting dwarf2 line number information @code{.file} assigns filenames
+@@ -4168,7 +4168,7 @@
+ The @var{enable} argument should be either 1 or 0, to enable or disable
+ this function respectively.
+ 
+-@node Data
++node Data
+ @section @code{.data @var{subsection}}
+ 
+ @cindex @code{data} directive
+@@ -4820,7 +4820,7 @@
+ debugging.
+ @end ifclear
+ 
+-@node Linkonce
++node Linkonce
+ @section @code{.linkonce [@var{type}]}
+ @cindex COMDAT
+ @cindex @code{linkonce} directive

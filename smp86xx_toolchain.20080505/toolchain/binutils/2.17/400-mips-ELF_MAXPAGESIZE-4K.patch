@@ -51,6 +51,8 @@
 -% Blame: doc@cygnus.com, 28mar91.
 +% Blame: doc cygnus.com, 28mar91.
  @end tex
+ 
+ 
 --- binutils/gas/doc/c-arc.texi
 +++ binutils/gas/doc/c-arc.texi
 @@ -212,7 +212,7 @@
@@ -60,7 +62,8 @@
 -@table @bullet
 +@table bullet
  @item @var{name}
- Name of the extension instruction 
+ Name of the extension instruction
+  
 --- binutils/gas/doc/c-mips.texi
 +++ binutils/gas/doc/c-mips.texi
 @@ -160,10 +160,10 @@

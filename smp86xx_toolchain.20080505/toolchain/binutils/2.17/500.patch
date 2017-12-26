@@ -39,7 +39,7 @@ diff -ur toolchain_build_mipsel_nofpu/binutils-2.17/gas/doc/c-arc.texi toolchain
  by the user.  The parameters are:
  
 -@table @bullet
-+table bullet
++@table @code
  @item @var{name}
  Name of the extension instruction 
  

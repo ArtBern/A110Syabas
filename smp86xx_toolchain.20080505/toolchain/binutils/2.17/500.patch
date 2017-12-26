@@ -1,0 +1,110 @@
+diff -ur toolchain_build_mipsel_nofpu/binutils-2.17/bfd/doc/bfd.texinfo toolchain_build_mipsel_nofpu/binutils-2.17.patched/bfd/doc/bfd.texinfo
+--- binutils/bfd/doc/bfd.texinfo	2006-06-12 13:05:03.000000000 +0000
++++ binutils/bfd/doc/bfd.texinfo	2017-12-26 13:58:03.344891606 +0000
+@@ -318,7 +318,7 @@
+ @printindex cp
+ 
+ @tex
+-% I think something like @colophon should be in texinfo.  In the
++% I think something like colophon should be in texinfo.  In the
+ % meantime:
+ \long\def\colophon{\hbox to0pt{}\vfill
+ \centerline{The body of this manual is set in}
+@@ -329,7 +329,7 @@
+ \centerline{{\sl\fontname\tensl\/}}
+ \centerline{are used for emphasis.}\vfill}
+ \page\colophon
+-% Blame: doc@cygnus.com, 28mar91.
++% Blame: doc cygnus.com, 28mar91.
+ @end tex
+ 
+ @contents
+diff -ur toolchain_build_mipsel_nofpu/binutils-2.17/bfd/doc/elf.texi toolchain_build_mipsel_nofpu/binutils-2.17.patched/bfd/doc/elf.texi
+--- binutils/bfd/doc/elf.texi	2006-04-16 18:36:40.000000000 +0000
++++ binutils/bfd/doc/elf.texi	2017-12-26 13:58:55.593137144 +0000
+@@ -8,7 +8,7 @@
+ haven't bothered yet.
+ 
+ @findex bfd_elf_find_section
+-@subsubsection @code{bfd_elf_find_section}
++subsubsection code bfd_elf_find_section
+ @strong{Synopsis}
+ @example
+ struct elf_internal_shdr *bfd_elf_find_section (bfd *abfd, char *name);
+diff -ur toolchain_build_mipsel_nofpu/binutils-2.17/gas/doc/c-arc.texi toolchain_build_mipsel_nofpu/binutils-2.17.patched/gas/doc/c-arc.texi
+--- binutils/gas/doc/c-arc.texi	2017-12-26 14:06:37.831090502 +0000
++++ binutils/gas/doc/c-arc.texi	2017-12-26 14:07:29.519309943 +0000
+@@ -212,7 +212,7 @@
+ encodings for use of these instructions according to the specification
+ by the user.  The parameters are:
+ 
+-@table @bullet
++table bullet
+ @item @var{name}
+ Name of the extension instruction 
+ 
+diff -ur toolchain_build_mipsel_nofpu/binutils-2.17/gas/doc/c-mips.texi toolchain_build_mipsel_nofpu/binutils-2.17.patched/gas/doc/c-mips.texi
+--- binutils/gas/doc/c-mips.texi	2017-12-26 14:08:30.975573070 +0000
++++ binutils/gas/doc/c-mips.texi	2017-12-26 14:08:46.231638732 +0000
+@@ -160,10 +160,10 @@
+ instructions around accesses to the @samp{HI} and @samp{LO} registers.
+ @samp{-no-m4650} turns off this option.
+ 
+-@itemx -m3900
+-@itemx -no-m3900
+-@itemx -m4100
+-@itemx -no-m4100
++itemx -m3900
++itemx -no-m3900
++itemx -m4100
++itemx -no-m4100
+ For each option @samp{-m@var{nnnn}}, generate code for the MIPS
+ @sc{r@var{nnnn}} chip.  This tells the assembler to accept instructions
+ specific to that chip, and to schedule for that chip's hazards.
+diff -ur toolchain_build_mipsel_nofpu/binutils-2.17/gas/doc/c-tic54x.texi toolchain_build_mipsel_nofpu/binutils-2.17.patched/gas/doc/c-tic54x.texi
+--- binutils/gas/doc/c-tic54x.texi	2005-03-03 01:29:54.000000000 +0000
++++ binutils/gas/doc/c-tic54x.texi	2017-12-26 14:04:17.826506215 +0000
+@@ -108,7 +108,7 @@
+ is replaced with x.  At this point, x has already been encountered
+ and the substitution stops.
+ 
+-@smallexample @code
++@smallexample code
+  .asg   "x",SYM1 
+  .asg   "SYM1",SYM2
+  .asg   "SYM2",x
+@@ -125,14 +125,14 @@
+ ambiguous by placing colons on either side of the subsym.  The following
+ code: 
+ 
+-@smallexample @code
++@smallexample code
+  .eval  "10",x
+ LAB:X:  add     #x, a
+ @end smallexample
+ 
+ When assembled becomes:
+ 
+-@smallexample @code
++@smallexample code
+ LAB10  add     #10, a
+ @end smallexample
+ 
+@@ -308,7 +308,7 @@
+ of a label or address.  For example, if an address @code{_label} resides
+ in extended program memory, the value of @code{_label} may be loaded as
+ follows:
+-@smallexample @code
++@smallexample code
+  ldx     #_label,16,a    ; loads extended bits of _label
+  or      #_label,a       ; loads lower 16 bits of _label
+  bacc    a               ; full address is in accumulator A
+@@ -344,7 +344,7 @@
+ performed on @var{string} before assignment.
+ 
+ @cindex @code{eval} directive, TIC54X
+-@itemx .eval @var{string}, @var{name}
++itemx .eval var string, var name
+ Evaluate the contents of string @var{string} and assign the result as a
+ string to the subsym @var{name}.  String replacement is performed on
+ @var{string} before assignment. 

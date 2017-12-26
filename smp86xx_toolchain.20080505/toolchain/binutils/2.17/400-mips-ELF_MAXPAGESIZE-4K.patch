@@ -53,8 +53,8 @@
  @end tex
  
  
---- gas/doc/c-arc.texi	Sat Jun 03 07:45:50 2006
-+++ gas/doc/c-arc.texi	Tue Dec 26 11:28:30 2017
+--- binutils/gas/doc/c-arc.texi	Sat Jun 03 07:45:50 2006
++++ binutils/gas/doc/c-arc.texi	Tue Dec 26 11:28:30 2017
 @@ -212,8 +212,8 @@
  encodings for use of these instructions according to the specification
  by the user.  The parameters are:
@@ -66,8 +66,8 @@
  Name of the extension instruction 
  
  @item @var{opcode}
---- gas/doc/c-mips.texi	Thu Sep 08 21:05:15 2005
-+++ gas/doc/c-mips.texi	Mon Dec 25 17:55:19 2017
+--- binutils/gas/doc/c-mips.texi	Thu Sep 08 21:05:15 2005
++++ binutils/gas/doc/c-mips.texi	Mon Dec 25 17:55:19 2017
 @@ -160,10 +160,10 @@
  instructions around accesses to the @samp{HI} and @samp{LO} registers.
  @samp{-no-m4650} turns off this option.
@@ -83,8 +83,8 @@
  For each option @samp{-m@var{nnnn}}, generate code for the MIPS
  @sc{r@var{nnnn}} chip.  This tells the assembler to accept instructions
  specific to that chip, and to schedule for that chip's hazards.
---- gas/doc/c-tic54x.texi	Thu Mar 03 04:29:54 2005
-+++ gas/doc/c-tic54x.texi	Mon Dec 25 18:01:10 2017
+--- binutils/gas/doc/c-tic54x.texi	Thu Mar 03 04:29:54 2005
++++ binutils/gas/doc/c-tic54x.texi	Mon Dec 25 18:01:10 2017
 @@ -108,7 +108,7 @@
  is replaced with x.  At this point, x has already been encountered
  and the substitution stops.

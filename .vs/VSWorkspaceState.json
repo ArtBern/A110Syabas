@@ -1,0 +1,12 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\smp86xx_toolchain.20080505",
+    "\\smp86xx_toolchain.20080505\\toolchain",
+    "\\smp86xx_toolchain.20080505\\toolchain\\binutils",
+    "\\smp86xx_toolchain.20080505\\toolchain\\binutils\\2.17",
+    "\\smp86xx_toolchain.20080505\\tools"
+  ],
+  "SelectedNode": "\\smp86xx_toolchain.20080505\\toolchain\\binutils\\2.17\\300-012_check_ldrunpath_length.patch",
+  "PreviewInSolutionExplorer": false
+}

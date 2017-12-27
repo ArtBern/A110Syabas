@@ -108,3 +108,32 @@ diff -ur toolchain_build_mipsel_nofpu/binutils-2.17/gas/doc/c-tic54x.texi toolch
  Evaluate the contents of string @var{string} and assign the result as a
  string to the subsym @var{name}.  String replacement is performed on
  @var{string} before assignment. 
+--- binutils/ld/ld.texinfo	2006-05-10 17:43:47.000000000 +0400
++++ binutils/ld/ld.texinfo	2017-12-27 17:15:38.484000000 +0300
+@@ -1653,7 +1653,7 @@
+ 
+ @kindex --version-script=@var{version-scriptfile}
+ @cindex version script, symbol versions
+-@itemx --version-script=@var{version-scriptfile}
++itemx --version-script=var version-scriptfile 
+ Specify the name of a version script to the linker.  This is typically
+ used when creating shared libraries to specify additional information
+ about the version hierarchy for the library being created.  This option
+@@ -6635,7 +6635,7 @@
+ @printindex cp
+ 
+ @tex
+-% I think something like @colophon should be in texinfo.  In the
++% I think something like colophon should be in texinfo.  In the
+ % meantime:
+ \long\def\colophon{\hbox to0pt{}\vfill
+ \centerline{The body of this manual is set in}
+@@ -6646,7 +6646,7 @@
+ \centerline{{\sl\fontname\tensl\/}}
+ \centerline{are used for emphasis.}\vfill}
+ \page\colophon
+-% Blame: doc@cygnus.com, 28mar91.
++% Blame: doc cygnus.com, 28mar91.
+ @end tex
+ 
+ 

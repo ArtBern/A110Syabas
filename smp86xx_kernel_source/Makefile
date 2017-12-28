@@ -145,7 +145,8 @@ patch_list_2_6_15 :=  \
     1022.cacheflush.patch \
     1024.bug.patch \
     1025.ddma.patch \
-    1027.sha.patch
+    1027.sha.patch \
+	1028.artem.patch
 patch_executed_list_2_6_15 := $(patch_list_2_6_15:%=$(kernel_src_2_6_15_dir)/README.%)
 
 $(patch_executed_list_2_6_15): $(kernel_src_2_6_15_dir)/.unpacked

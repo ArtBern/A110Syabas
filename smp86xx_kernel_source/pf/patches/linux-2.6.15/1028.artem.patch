@@ -1,0 +1,11 @@
+--- linux-2.6.15.ref/Makefile	2017-12-28 13:22:44.500000000 +0300
++++ linux-2.6.15/Makefile	2017-12-28 13:05:58.328000000 +0300
+@@ -450,7 +450,7 @@
+ include $(srctree)/arch/$(ARCH)/Makefile
+ export KBUILD_DEFCONFIG
+ 
+-config %config: scripts_basic outputmakefile FORCE
++%config: scripts_basic outputmakefile FORCE
+ 	$(Q)mkdir -p include/linux
+ 	$(Q)$(MAKE) $(build)=scripts/kconfig $@
+ 

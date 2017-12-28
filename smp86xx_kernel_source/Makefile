@@ -14,7 +14,7 @@ endif
 patch_dir := pf/patches
 current_dir := $(shell basename $(PWD))
 
-wget          := wget --passive-ftp
+wget          := wget 
 download_site := ftp://armutils:sigmadesigns@gw.sigmadesigns.com/smp86xx
 
 
@@ -112,7 +112,7 @@ kernel-source-2.4.30: $(kernel_src_2_4_30_dir)/.configured
 ###############################################################################
 
 kernel_src_2_6_15           := linux-2.6.15.tar.bz2
-kernel_src_2_6_15_dir       := linux-2.6.15.opentvixdev
+kernel_src_2_6_15_dir       := linux-2.6.15
 kernel_src_2_6_15_config    := config-2.6.15-smp86xx
 
 $(kernel_src_2_6_15_dir)/.unpacked: $(kernel_src_2_6_15)

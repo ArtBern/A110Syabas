@@ -1,0 +1,513 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/net/8139too.c linuxmips-2.4.30/drivers/net/8139too.c
+--- linuxmips-2.4.30.ref/drivers/net/8139too.c	2004-11-18 16:28:39.000000000 -0800
++++ linuxmips-2.4.30/drivers/net/8139too.c	2005-03-25 20:08:41.000000000 -0800
+@@ -92,7 +92,8 @@
+ */
+ 
+ #define DRV_NAME	"8139too"
+-#define DRV_VERSION	"0.9.26"
++#define DRV_VERSION	"0.9.27"
++
+ 
+ 
+ #include <linux/config.h>
+@@ -113,14 +114,19 @@
+ #include <asm/io.h>
+ #include <asm/uaccess.h>
+ 
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,23)
++/* For 2.6.x compatibility */
++typedef void irqreturn_t;
++#define IRQ_NONE
++#define IRQ_HANDLED
++#endif
++
++
++
+ #define RTL8139_DRIVER_NAME   DRV_NAME " Fast Ethernet driver " DRV_VERSION
+ #define PFX DRV_NAME ": "
+ 
+-/* Default Message level */
+-#define RTL8139_DEF_MSG_ENABLE   (NETIF_MSG_DRV   | \
+-                                 NETIF_MSG_PROBE  | \
+-                                 NETIF_MSG_LINK)
+-
+ 
+ /* enable PIO instead of MMIO, if CONFIG_8139TOO_PIO is selected */
+ #ifdef CONFIG_8139TOO_PIO
+@@ -163,9 +169,6 @@
+ static int media[MAX_UNITS] = {-1, -1, -1, -1, -1, -1, -1, -1};
+ static int full_duplex[MAX_UNITS] = {-1, -1, -1, -1, -1, -1, -1, -1};
+ 
+-/* Maximum events (Rx packets, etc.) to handle at each interrupt. */
+-static int max_interrupt_work = 20;
+-
+ /* Maximum number of multicast addresses to filter (vs. Rx-all-multicast).
+    The RTL chips use a 64 element hash table based on the Ethernet CRC.  */
+ static int multicast_filter_limit = 32;
+@@ -568,7 +571,6 @@
+ 	int drv_flags;
+ 	struct pci_dev *pci_dev;
+ 	u32 pci_state[16];
+-	u32 msg_enable;
+ 	struct net_device_stats stats;
+ 	unsigned char *rx_ring;
+ 	unsigned int cur_rx;	/* Index into the Rx buffer of next Rx pkt. */
+@@ -599,13 +601,11 @@
+ MODULE_LICENSE("GPL");
+ 
+ MODULE_PARM (multicast_filter_limit, "i");
+-MODULE_PARM (max_interrupt_work, "i");
+ MODULE_PARM (media, "1-" __MODULE_STRING(MAX_UNITS) "i");
+ MODULE_PARM (full_duplex, "1-" __MODULE_STRING(MAX_UNITS) "i");
+ MODULE_PARM (debug, "i");
+ MODULE_PARM_DESC (debug, "8139too bitmapped message enable number");
+ MODULE_PARM_DESC (multicast_filter_limit, "8139too maximum number of filtered multicast addresses");
+-MODULE_PARM_DESC (max_interrupt_work, "8139too maximum events handled per interrupt");
+ MODULE_PARM_DESC (media, "8139too: Bits 4+9: force full duplex, bit 5: 100Mbps");
+ MODULE_PARM_DESC (full_duplex, "8139too: Force full duplex for board(s) (1)");
+ 
+@@ -627,7 +627,10 @@
+ static void rtl8139_set_rx_mode (struct net_device *dev);
+ static void __set_rx_mode (struct net_device *dev);
+ static void rtl8139_hw_start (struct net_device *dev);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
+ static struct ethtool_ops rtl8139_ethtool_ops;
++#endif
++static int rtl8139_poll(struct net_device *dev, int *budget);
+ 
+ #ifdef USE_IO_OPS
+ 
+@@ -971,11 +974,15 @@
+ 	/* The Rtl8139-specific entries in the device structure. */
+ 	dev->open = rtl8139_open;
+ 	dev->hard_start_xmit = rtl8139_start_xmit;
++	dev->poll = rtl8139_poll;
++	dev->weight = 16;
+ 	dev->stop = rtl8139_close;
+ 	dev->get_stats = rtl8139_get_stats;
+ 	dev->set_multicast_list = rtl8139_set_rx_mode;
+ 	dev->do_ioctl = netdev_ioctl;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
+ 	dev->ethtool_ops = &rtl8139_ethtool_ops;
++#endif
+ 	dev->tx_timeout = rtl8139_tx_timeout;
+ 	dev->watchdog_timeo = TX_TIMEOUT;
+ 
+@@ -993,8 +1000,6 @@
+ 	/* note: tp->chipset set in rtl8139_init_board */
+ 	tp->drv_flags = board_info[ent->driver_data].hw_flags;
+ 	tp->mmio_addr = ioaddr;
+-	tp->msg_enable =
+-		(debug < 0 ? RTL8139_DEF_MSG_ENABLE : ((1 << debug) - 1));
+ 	spin_lock_init (&tp->lock);
+ 	init_waitqueue_head (&tp->thr_wait);
+ 	init_completion (&tp->thr_exited);
+@@ -1297,7 +1302,9 @@
+ {
+ 	struct rtl8139_private *tp = dev->priv;
+ 	int retval;
++#ifdef RTL8139_DEBUG
+ 	void *ioaddr = tp->mmio_addr;
++#endif
+ 
+ 	retval = request_irq (dev->irq, rtl8139_interrupt, SA_SHIRQ, dev->name, dev);
+ 	if (retval)
+@@ -1327,8 +1334,7 @@
+ 	rtl8139_init_ring (dev);
+ 	rtl8139_hw_start (dev);
+ 
+-	if (netif_msg_ifup(tp))
+-		printk(KERN_DEBUG "%s: rtl8139_open() ioaddr %#lx IRQ %d"
++	DPRINTK ("%s: rtl8139_open() ioaddr %#lx IRQ %d"
+ 			" GP Pins %2.2x %s-duplex.\n",
+ 			dev->name, pci_resource_start (tp->pci_dev, 1),
+ 			dev->irq, RTL_R8 (MediaStatus),
+@@ -1345,7 +1351,7 @@
+ 	struct rtl8139_private *tp = dev->priv;
+ 
+ 	if (tp->phys[0] >= 0) {
+-		mii_check_media(&tp->mii, netif_msg_link(tp), init_media);
++		mii_check_media(&tp->mii, 1, init_media);
+ 	}
+ }
+ 
+@@ -1734,9 +1740,8 @@
+ 		netif_stop_queue (dev);
+ 	spin_unlock_irq(&tp->lock);
+ 
+-	if (netif_msg_tx_queued(tp))
+-		printk (KERN_DEBUG "%s: Queued Tx packet size %u to slot %d.\n",
+-			dev->name, len, entry);
++	DPRINTK ("%s: Queued Tx packet size %u to slot %d.\n",
++		 dev->name, len, entry);
+ 
+ 	return 0;
+ }
+@@ -1766,9 +1771,8 @@
+ 		/* Note: TxCarrierLost is always asserted at 100mbps. */
+ 		if (txstatus & (TxOutOfWindow | TxAborted)) {
+ 			/* There was an major error, log it. */
+-			if (netif_msg_tx_err(tp))
+-				printk(KERN_DEBUG "%s: Transmit error, Tx status %8.8x.\n",
+-					dev->name, txstatus);
++			DPRINTK ("%s: Transmit error, Tx status %8.8x.\n",
++				 dev->name, txstatus);
+ 			tp->stats.tx_errors++;
+ 			if (txstatus & TxAborted) {
+ 				tp->stats.tx_aborted_errors++;
+@@ -1823,9 +1827,8 @@
+ 	int tmp_work;
+ #endif
+ 
+-	if (netif_msg_rx_err (tp)) 
+-		printk(KERN_DEBUG "%s: Ethernet frame had errors, status %8.8x.\n",
+-			dev->name, rx_status);
++	DPRINTK ("%s: Ethernet frame had errors, status %8.8x.\n",
++	         dev->name, rx_status);
+ 	tp->stats.rx_errors++;
+ 	if (!(rx_status & RxStatusOK)) {
+ 		if (rx_status & RxTooLong) {
+@@ -1897,24 +1900,28 @@
+ #endif
+ }
+ 
+-static void rtl8139_rx_interrupt (struct net_device *dev,
+-				  struct rtl8139_private *tp, void *ioaddr)
++/*
++ * NAPI poll routine.
++ */
++static int rtl8139_poll(struct net_device *dev, int *budget)
+ {
++	struct rtl8139_private *tp = dev->priv;
++	void *ioaddr = tp->mmio_addr;
+ 	unsigned char *rx_ring;
+ 	u16 cur_rx;
++	int rx, status;
++	unsigned long flags;
+ 
+-	assert (dev != NULL);
+-	assert (tp != NULL);
+-	assert (ioaddr != NULL);
+-
++	spin_lock_irqsave(&tp->lock, flags);
++ rescan:
+ 	rx_ring = tp->rx_ring;
+ 	cur_rx = tp->cur_rx;
+-
+-	DPRINTK ("%s: In rtl8139_rx(), current %4.4x BufAddr %4.4x,"
++	rx = 0;
++	DPRINTK ("%s: In rtl8139_rx_poll(), current %4.4x BufAddr %4.4x,"
+ 		 " free to %4.4x, Cmd %2.2x.\n", dev->name, cur_rx,
+ 		 RTL_R16 (RxBufAddr),
+ 		 RTL_R16 (RxBufPtr), RTL_R8 (ChipCmd));
+-
++	
+ 	while ((RTL_R8 (ChipCmd) & RxBufEmpty) == 0) {
+ 		int ring_offset = cur_rx % RX_BUF_LEN;
+ 		u32 rx_status;
+@@ -1929,9 +1936,8 @@
+ 		rx_size = rx_status >> 16;
+ 		pkt_size = rx_size - 4;
+ 
+-		if (netif_msg_rx_status(tp))
+-			printk(KERN_DEBUG "%s:  rtl8139_rx() status %4.4x, size %4.4x,"
+-				" cur %4.4x.\n", dev->name, rx_status,
++		DPRINTK ("%s:  rtl8139_rx() status %4.4x, size %4.4x,"
++			 " cur %4.4x.\n", dev->name, rx_status,
+ 			 rx_size, cur_rx);
+ #if RTL8139_DEBUG > 2
+ 		{
+@@ -1962,18 +1968,13 @@
+ 		    (rx_size < 8) ||
+ 		    (!(rx_status & RxStatusOK))) {
+ 			rtl8139_rx_err (rx_status, dev, tp, ioaddr);
+-			return;
++			goto err;
+ 		}
+ 
+-		/* Malloc up new buffer, compatible with net-2e. */
+-		/* Omit the four octet CRC from the length. */
+-
+-		/* TODO: consider allocating skb's outside of
+-		 * interrupt context, both to speed interrupt processing,
+-		 * and also to reduce the chances of having to
+-		 * drop packets here under memory pressure.
+-		 */
++		/* Drop lock so we can copy data with interrupts enabled. */
++		spin_unlock_irqrestore(&tp->lock, flags);
+ 
++		/* Omit the four octet CRC from the length. */
+ 		skb = dev_alloc_skb (pkt_size + 2);
+ 		if (skb) {
+ 			skb->dev = dev;
+@@ -1983,22 +1984,35 @@
+ 			skb_put (skb, pkt_size);
+ 
+ 			skb->protocol = eth_type_trans (skb, dev);
+-			netif_rx (skb);
++			netif_receive_skb(skb);
+ 			dev->last_rx = jiffies;
+ 			tp->stats.rx_bytes += pkt_size;
+ 			tp->stats.rx_packets++;
+ 		} else {
+-			printk (KERN_WARNING
+-				"%s: Memory squeeze, dropping packet.\n",
+-				dev->name);
++			/* Since this board has a small fixed rx_ring,
++			 * it is better to toss packets than hold them
++			 * in the ring.
++			 */
++			if (net_ratelimit())
++				printk (KERN_WARNING
++					"%s: Memory squeeze, dropping packet.\n",
++					dev->name);
+ 			tp->stats.rx_dropped++;
+ 		}
+ 
++		spin_lock_irqsave(&tp->lock, flags);
+ 		cur_rx = (cur_rx + rx_size + 4 + 3) & ~3;
+ 		RTL_W16 (RxBufPtr, cur_rx - 16);
+ 
+-		if (RTL_R16 (IntrStatus) & RxAckBits)
++		status = RTL_R16 (IntrStatus) & RxAckBits;
++		if (status & (RxFIFOOver | RxOverflow))
++			tp->stats.rx_errors++;
++
++		if (status)
+ 			RTL_W16_F (IntrStatus, RxAckBits);
++
++		if (++rx >= dev->quota)
++			break;
+ 	}
+ 
+ 	DPRINTK ("%s: Done rtl8139_rx(), current %4.4x BufAddr %4.4x,"
+@@ -2007,6 +2021,23 @@
+ 		 RTL_R16 (RxBufPtr), RTL_R8 (ChipCmd));
+ 
+ 	tp->cur_rx = cur_rx;
++ err:
++	*budget -= rx;
++
++	if ((dev->quota -= rx) <= 0) {
++		spin_unlock_irqrestore(&tp->lock, flags);
++		return 1; /* not done */
++	}
++
++	/* last gasp check if interrupt still pending */
++	if (RTL_R16 (IntrStatus) & RxAckBits) {
++		DPRINTK("%s: going back for more work\n", dev->name);
++		goto rescan;
++	}
++	netif_rx_complete(dev);
++	RTL_W16 (IntrMask, rtl8139_intr_mask);
++	spin_unlock_irqrestore(&tp->lock, flags);
++	return 0; /* done */
+ }
+ 
+ 
+@@ -2032,9 +2063,7 @@
+ 		status &= ~RxUnderrun;
+ 	}
+ 
+-	/* XXX along with rtl8139_rx_err, are we double-counting errors? */
+-	if (status &
+-	    (RxUnderrun | RxOverflow | RxErr | RxFIFOOver))
++	if (status & RxUnderrun)
+ 		tp->stats.rx_errors++;
+ 
+ 	if (status & PCSTimeout)
+@@ -2051,7 +2080,6 @@
+ 	}
+ }
+ 
+-
+ /* The interrupt handler does all of the Rx thread work and cleans up
+    after the Tx thread. */
+ static irqreturn_t rtl8139_interrupt (int irq, void *dev_instance,
+@@ -2059,74 +2087,66 @@
+ {
+ 	struct net_device *dev = (struct net_device *) dev_instance;
+ 	struct rtl8139_private *tp = dev->priv;
+-	int boguscnt = max_interrupt_work;
+ 	void *ioaddr = tp->mmio_addr;
+ 	int ackstat, status;
+ 	int link_changed = 0; /* avoid bogus "uninit" warning */
+-	int handled = 0;
+ 
+ 	spin_lock (&tp->lock);
+ 
+-	do {
+-		status = RTL_R16 (IntrStatus);
+-
+-		/* h/w no longer present (hotplug?) or major error, bail */
+-		if (status == 0xFFFF)
+-			break;
+-
+-		if ((status &
+-		     (PCIErr | PCSTimeout | RxUnderrun | RxOverflow |
+-		      RxFIFOOver | TxErr | TxOK | RxErr | RxOK)) == 0)
+-			break;
+-
+-		handled = 1;
++	status = RTL_R16 (IntrStatus);
+ 
+-		/* Acknowledge all of the current interrupt sources ASAP, but
+-		   an first get an additional status bit from CSCR. */
+-		if (status & RxUnderrun)
+-			link_changed = RTL_R16 (CSCR) & CSCR_LinkChangeBit;
++	/* h/w no longer present (hotplug?) or major error, bail */
++	if (unlikely(status == 0xFFFF)) {
++		spin_unlock(&tp->lock);
++		return IRQ_HANDLED;
++	}
+ 
+-		/* The chip takes special action when we clear RxAckBits,
+-		 * so we clear them later in rtl8139_rx_interrupt
+-		 */
+-		ackstat = status & ~(RxAckBits | TxErr);
+-		RTL_W16 (IntrStatus, ackstat);
++	/* no interrupt source present */
++	if (unlikely((status & rtl8139_intr_mask) == 0)) {
++		spin_unlock(&tp->lock);
++		return IRQ_NONE;
++	}
+ 
+-		if (netif_msg_intr(tp))
+-			printk (KERN_DEBUG "%s: interrupt  status=%#4.4x ackstat=%#4.4x new intstat=%#4.4x.\n",
+-				dev->name, status, ackstat, RTL_R16 (IntrStatus));
+-
+-		if (netif_running (dev) && (status & RxAckBits))
+-			rtl8139_rx_interrupt (dev, tp, ioaddr);
+-
+-		/* Check uncommon events with one test. */
+-		if (status & (PCIErr | PCSTimeout | RxUnderrun | RxOverflow |
+-		  	      RxFIFOOver | RxErr))
+-			rtl8139_weird_interrupt (dev, tp, ioaddr,
+-						 status, link_changed);
+-
+-		if (netif_running (dev) && (status & (TxOK | TxErr))) {
+-			rtl8139_tx_interrupt (dev, tp, ioaddr);
+-			if (status & TxErr)
+-				RTL_W16 (IntrStatus, TxErr);
+-		}
++	/* Acknowledge all of the current interrupt sources ASAP, but
++	   an first get an additional status bit from CSCR. */
++	 if (unlikely(status & RxUnderrun))
++		link_changed = RTL_R16 (CSCR) & CSCR_LinkChangeBit;
+ 
+-		boguscnt--;
+-	} while (boguscnt > 0);
++	/* The chip takes special action when we clear RxAckBits,
++	 * so we clear them later in poll
++	 */
++	ackstat = status & ~(RxAckBits | TxErr);
++	RTL_W16 (IntrStatus, ackstat);
+ 
+-	if (boguscnt <= 0) {
+-		printk (KERN_WARNING "%s: Too much work at interrupt, "
+-			"IntrStatus=0x%4.4x.\n", dev->name, status);
++	DPRINTK ("%s: interrupt  status=%#4.4x ackstat=%#4.4x new intstat=%#4.4x.\n",
++		 dev->name, status, ackstat, RTL_R16 (IntrStatus));
+ 
+-		/* Clear all interrupt sources. */
+-		RTL_W16 (IntrStatus, 0xffff);
++	/* If received interrupt, then disable furthur interrupts
++	 * and enable NAPI polling.
++	 */
++	if (netif_running (dev) && (status & RxAckBits)) {
++		/* disable more receive interrupts */
++		RTL_W16 (IntrMask, rtl8139_intr_mask & ~RxAckBits);
++		netif_rx_schedule(dev);
++	}
++
++	/* Check uncommon events with one test. */
++	if (unlikely(status & (PCIErr|PCSTimeout|RxUnderrun|RxOverflow))) {
++		rtl8139_weird_interrupt (dev, tp, ioaddr,
++					 status, link_changed);
++	}
++
++	if (netif_running (dev) && (status & (TxOK | TxErr))) {
++		rtl8139_tx_interrupt (dev, tp, ioaddr);
++		if (status & TxErr)
++			RTL_W16 (IntrStatus, TxErr);
+ 	}
+ 
+ 	spin_unlock (&tp->lock);
+ 
+ 	DPRINTK ("%s: exiting interrupt, intr_status=%#4.4x.\n",
+ 		 dev->name, RTL_R16 (IntrStatus));
+-	return IRQ_RETVAL(handled);
++	return IRQ_HANDLED;
+ }
+ 
+ 
+@@ -2149,9 +2169,8 @@
+ 		}
+ 		wait_for_completion (&tp->thr_exited);
+ 	}
+-	
+-	if (netif_msg_ifdown(tp))
+-		printk(KERN_DEBUG "%s: Shutting down ethercard, status was 0x%4.4x.\n",
++
++	DPRINTK ("%s: Shutting down ethercard, status was 0x%4.4x.\n",
+ 			dev->name, RTL_R16 (IntrStatus));
+ 
+ 	spin_lock_irqsave (&tp->lock, flags);
+@@ -2309,14 +2328,12 @@
+ 
+ static u32 rtl8139_get_msglevel(struct net_device *dev)
+ {
+-	struct rtl8139_private *np = dev->priv;
+-	return np->msg_enable;
++	return debug;
+ }
+ 
+ static void rtl8139_set_msglevel(struct net_device *dev, u32 datum)
+ {
+-	struct rtl8139_private *np = dev->priv;
+-	np->msg_enable = datum;
++	debug = datum;
+ }
+ 
+ /* TODO: we are too slack to do reg dumping for pio, for now */
+@@ -2362,6 +2379,8 @@
+ 	memcpy(data, ethtool_stats_keys, sizeof(ethtool_stats_keys));
+ }
+ 
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,23)
+ static struct ethtool_ops rtl8139_ethtool_ops = {
+ 	.get_drvinfo		= rtl8139_get_drvinfo,
+ 	.get_settings		= rtl8139_get_settings,
+@@ -2378,6 +2397,7 @@
+ 	.get_stats_count	= rtl8139_get_stats_count,
+ 	.get_ethtool_stats	= rtl8139_get_ethtool_stats,
+ };
++#endif
+ 
+ static int netdev_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
+ {
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1014.rtl8139.patch linuxmips-2.4.30/README.1014.rtl8139.patch
+--- linuxmips-2.4.30.ref/README.1014.rtl8139.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1014.rtl8139.patch	2005-03-25 20:09:57.000000000 -0800
+@@ -0,0 +1,18 @@
++Feature:
++--------
++Updated RTL8139 driver (0.9.27).
++
++Prerequisite patch numbers:
++---------------------------
++none
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

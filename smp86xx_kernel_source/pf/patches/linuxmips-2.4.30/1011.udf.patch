@@ -1,0 +1,5279 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/balloc.c linuxmips-2.4.30/fs/udf/balloc.c
+--- linuxmips-2.4.30.ref/fs/udf/balloc.c	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/balloc.c	2007-05-10 10:49:29.000000000 -0700
+@@ -15,7 +15,7 @@
+  *		ftp://prep.ai.mit.edu/pub/gnu/GPL
+  *	Each contributing author retains all rights to their own work.
+  *
+- *  (C) 1999-2001 Ben Fennema
++ *  (C) 1999-2003 Ben Fennema
+  *  (C) 1999 Stelias Computing Inc
+  *
+  * HISTORY
+@@ -144,7 +144,11 @@
+ }
+ 
+ static void udf_bitmap_free_blocks(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	struct udf_bitmap *bitmap, lb_addr bloc, uint32_t offset, uint32_t count)
+ {
+ 	struct buffer_head * bh = NULL;
+@@ -195,7 +199,11 @@
+ 		else
+ 		{
+ 			if (inode)
++#ifndef OLD_QUOTA
+ 				DQUOT_FREE_BLOCK(inode, 1);
++#else
++				DQUOT_FREE_BLOCK(sb, inode, 1);
++#endif
+ 			if (UDF_SB_LVIDBH(sb))
+ 			{
+ 				UDF_SB_LVID(sb)->freeSpaceTable[UDF_SB_PARTITION(sb)] =
+@@ -219,7 +227,11 @@
+ }
+ 
+ static int udf_bitmap_prealloc_blocks(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	struct udf_bitmap *bitmap, uint16_t partition, uint32_t first_block,
+ 	uint32_t block_count)
+ {
+@@ -254,12 +266,20 @@
+ 	{
+ 		if (!udf_test_bit(bit, bh->b_data))
+ 			goto out;
++#ifndef OLD_QUOTA
+ 		else if (DQUOT_PREALLOC_BLOCK(inode, 1))
++#else
++		else if (DQUOT_PREALLOC_BLOCK(sb, inode, 1))
++#endif
+ 			goto out;
+ 		else if (!udf_clear_bit(bit, bh->b_data))
+ 		{
+ 			udf_debug("bit already cleared for block %d\n", bit);
++#ifndef OLD_QUOTA
+ 			DQUOT_FREE_BLOCK(inode, 1);
++#else
++			DQUOT_FREE_BLOCK(sb, inode, 1);
++#endif
+ 			goto out;
+ 		}
+ 		block_count --;
+@@ -283,7 +303,11 @@
+ }
+ 
+ static int udf_bitmap_new_block(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	struct udf_bitmap *bitmap, uint16_t partition, uint32_t goal, int *err)
+ {
+ 	int newbit, bit=0, block, block_group, group_start;
+@@ -387,7 +411,11 @@
+ 	/*
+ 	 * Check quota for allocation of this block.
+ 	 */
++#ifndef OLD_QUOTA
+ 	if (inode && DQUOT_ALLOC_BLOCK(inode, 1))
++#else
++	if (inode && DQUOT_ALLOC_BLOCK(sb, inode, 1))
++#endif
+ 	{
+ 		unlock_super(sb);
+ 		*err = -EDQUOT;
+@@ -423,7 +451,11 @@
+ }
+ 
+ static void udf_table_free_blocks(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	struct inode * table, lb_addr bloc, uint32_t offset, uint32_t count)
+ {
+ 	uint32_t start, end;
+@@ -446,7 +478,11 @@
+ 	/* We do this up front - There are some error conditions that could occure,
+ 	   but.. oh well */
+ 	if (inode)
++#ifndef OLD_QUOTA
+ 		DQUOT_FREE_BLOCK(inode, count);
++#else
++		DQUOT_FREE_BLOCK(sb, inode, count);
++#endif
+ 	if (UDF_SB_LVIDBH(sb))
+ 	{
+ 		UDF_SB_LVID(sb)->freeSpaceTable[UDF_SB_PARTITION(sb)] =
+@@ -461,8 +497,7 @@
+ 	elen = 0;
+ 	obloc = nbloc = UDF_I_LOCATION(table);
+ 
+-	obh = nbh = udf_tread(sb, udf_get_lb_pblock(sb, nbloc, 0));
+-	atomic_inc(&nbh->b_count);
++	obh = nbh = NULL;
+ 
+ 	while (count && (etype =
+ 		udf_next_aext(table, &nbloc, &nextoffset, &eloc, &elen, &nbh, 1)) != -1)
+@@ -506,7 +541,7 @@
+ 			udf_write_aext(table, obloc, &oextoffset, eloc, elen, obh, 1);
+ 		}
+ 
+-		if (memcmp(&nbloc, &obloc, sizeof(lb_addr)))
++		if (nbh != obh)
+ 		{
+ 			i = -1;
+ 			obloc = nbloc;
+@@ -580,7 +615,10 @@
+ 			{
+ 				loffset = nextoffset;
+ 				aed->lengthAllocDescs = cpu_to_le32(adsize);
+-				sptr = (obh)->b_data + nextoffset - adsize;
++				if (obh)
++					sptr = UDF_I_DATA(inode) + nextoffset -  udf_file_entry_alloc_offset(inode) + UDF_I_LENEATTR(inode) - adsize;
++				else
++					sptr = obh->b_data + nextoffset - adsize;
+ 				dptr = nbh->b_data + sizeof(struct allocExtDesc);
+ 				memcpy(dptr, sptr, adsize);
+ 				nextoffset = sizeof(struct allocExtDesc) + adsize;
+@@ -591,8 +629,8 @@
+ 				aed->lengthAllocDescs = cpu_to_le32(0);
+ 				sptr = (obh)->b_data + nextoffset;
+ 				nextoffset = sizeof(struct allocExtDesc);
+-	
+-				if (memcmp(&UDF_I_LOCATION(table), &obloc, sizeof(lb_addr)))
++
++				if (obh)
+ 				{
+ 					aed = (struct allocExtDesc *)(obh)->b_data;
+ 					aed->lengthAllocDescs =
+@@ -631,15 +669,20 @@
+ 					break;
+ 				}
+ 			}
+-			udf_update_tag(obh->b_data, loffset);
+-			mark_buffer_dirty(obh);
++			if (obh)
++			{
++				udf_update_tag(obh->b_data, loffset);
++				mark_buffer_dirty(obh);
++			}
++			else
++				mark_inode_dirty(table);
+ 		}
+ 
+ 		if (elen) /* It's possible that stealing the block emptied the extent */
+ 		{
+ 			udf_write_aext(table, nbloc, &nextoffset, eloc, elen, nbh, 1);
+ 
+-			if (!memcmp(&UDF_I_LOCATION(table), &nbloc, sizeof(lb_addr)))
++			if (!nbh)
+ 			{
+ 				UDF_I_LENALLOC(table) += adsize;
+ 				mark_inode_dirty(table);
+@@ -665,7 +708,11 @@
+ }
+ 
+ static int udf_table_prealloc_blocks(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	struct inode *table, uint16_t partition, uint32_t first_block,
+ 	uint32_t block_count)
+ {
+@@ -690,7 +737,7 @@
+ 	extoffset = sizeof(struct unallocSpaceEntry);
+ 	bloc = UDF_I_LOCATION(table);
+ 
+-	bh = udf_tread(sb, udf_get_lb_pblock(sb, bloc, 0));
++	bh = NULL;
+ 	eloc.logicalBlockNum = 0xFFFFFFFF;
+ 
+ 	while (first_block != eloc.logicalBlockNum && (etype =
+@@ -706,7 +753,11 @@
+ 		extoffset -= adsize;
+ 
+ 		alloc_count = (elen >> sb->s_blocksize_bits);
++#ifndef OLD_QUOTA
+ 		if (inode && DQUOT_PREALLOC_BLOCK(inode, alloc_count > block_count ? block_count : alloc_count))
++#else
++		if (inode && DQUOT_PREALLOC_BLOCK(sb, inode, alloc_count > block_count ? block_count : alloc_count))
++#endif
+ 			alloc_count = 0;
+ 		else if (alloc_count > block_count)
+ 		{
+@@ -735,7 +786,11 @@
+ }
+ 
+ static int udf_table_new_block(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	struct inode *table, uint16_t partition, uint32_t goal, int *err)
+ {
+ 	uint32_t spread = 0xFFFFFFFF, nspread = 0xFFFFFFFF;
+@@ -768,8 +823,7 @@
+ 	extoffset = sizeof(struct unallocSpaceEntry);
+ 	bloc = UDF_I_LOCATION(table);
+ 
+-	goal_bh = bh = udf_tread(sb, udf_get_lb_pblock(sb, bloc, 0));
+-	atomic_inc(&goal_bh->b_count);
++	goal_bh = bh = NULL;
+ 
+ 	while (spread && (etype =
+ 		udf_next_aext(table, &bloc, &extoffset, &eloc, &elen, &bh, 1)) != -1)
+@@ -819,7 +873,11 @@
+ 	goal_eloc.logicalBlockNum ++;
+ 	goal_elen -= sb->s_blocksize;
+ 
++#ifndef OLD_QUOTA
+ 	if (inode && DQUOT_ALLOC_BLOCK(inode, 1))
++#else
++	if (inode && DQUOT_ALLOC_BLOCK(sb, inode, 1))
++#endif
+ 	{
+ 		udf_release_data(goal_bh);
+ 		unlock_super(sb);
+@@ -847,7 +905,11 @@
+ }
+ 
+ inline void udf_free_blocks(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	lb_addr bloc, uint32_t offset, uint32_t count)
+ {
+ 	uint16_t partition = bloc.partitionReferenceNum;
+@@ -881,7 +943,11 @@
+ }
+ 
+ inline int udf_prealloc_blocks(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	uint16_t partition, uint32_t first_block, uint32_t block_count)
+ {
+ 	if (UDF_SB_PARTFLAGS(sb, partition) & UDF_PART_FLAG_UNALLOC_BITMAP)
+@@ -913,7 +979,11 @@
+ }
+ 
+ inline int udf_new_block(struct super_block * sb,
++#ifndef OLD_QUOTA
+ 	struct inode * inode,
++#else
++	const struct inode * inode,
++#endif
+ 	uint16_t partition, uint32_t goal, int *err)
+ {
+ 	if (UDF_SB_PARTFLAGS(sb, partition) & UDF_PART_FLAG_UNALLOC_BITMAP)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/crc.c linuxmips-2.4.30/fs/udf/crc.c
+--- linuxmips-2.4.30.ref/fs/udf/crc.c	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/crc.c	2007-05-10 10:49:29.000000000 -0700
+@@ -84,7 +84,7 @@
+  *	July 21, 1997 - Andrew E. Mileski
+  *	Adapted from OSTA-UDF(tm) 1.50 standard.
+  */
+-extern uint16_t
++uint16_t
+ udf_crc(uint8_t *data, uint32_t size, uint16_t crc)
+ {
+ 	while (size--)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/dir.c linuxmips-2.4.30/fs/udf/dir.c
+--- linuxmips-2.4.30.ref/fs/udf/dir.c	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/dir.c	2007-05-10 10:49:29.000000000 -0700
+@@ -15,11 +15,11 @@
+  *		ftp://prep.ai.mit.edu/pub/gnu/GPL
+  *	Each contributing author retains all rights to their own work.
+  *
+- *  (C) 1998-2001 Ben Fennema
++ *  (C) 1998-2004 Ben Fennema
+  *
+  * HISTORY
+  *
+- *  10/05/98 dgb  Split directory operations into it's own file
++ *  10/05/98 dgb  Split directory operations into its own file
+  *                Implemented directory reads via do_udf_readdir
+  *  10/06/98      Made directory operations work!
+  *  11/17/98      Rewrote directory to support ICBTAG_FLAG_AD_LONG
+@@ -35,6 +35,7 @@
+ #include <linux/errno.h>
+ #include <linux/mm.h>
+ #include <linux/slab.h>
++#include <linux/smp_lock.h>
+ 
+ #include "udf_i.h"
+ #include "udf_sb.h"
+@@ -46,10 +47,10 @@
+ /* readdir and lookup functions */
+ 
+ struct file_operations udf_dir_operations = {
+-	read:			generic_read_dir,
+-	readdir:		udf_readdir,
+-	ioctl:			udf_ioctl,
+-	fsync:			udf_fsync_file,
++	.read			= generic_read_dir,
++	.readdir		= udf_readdir,
++	.ioctl			= udf_ioctl,
++	.fsync			= udf_fsync_file,
+ };
+ 
+ /*
+@@ -83,15 +84,21 @@
+ 	struct inode *dir = filp->f_dentry->d_inode;
+ 	int result;
+ 
++	lock_kernel();
++
+ 	if ( filp->f_pos == 0 ) 
+ 	{
+ 		if (filldir(dirent, ".", 1, filp->f_pos, dir->i_ino, DT_DIR) < 0)
++		{
++			unlock_kernel();
+ 			return 0;
++		}
+ 		filp->f_pos ++;
+ 	}
+  
+ 	result = do_udf_readdir(dir, filp, filldir, dirent);
+ 	UPDATE_ATIME(dir);
++	unlock_kernel();
+  	return result;
+ }
+ 
+@@ -104,7 +111,7 @@
+ 	int block, iblock;
+ 	loff_t nf_pos = filp->f_pos - 1;
+ 	int flen;
+-	char fname[255];
++	char fname[UDF_NAME_LEN];
+ 	char *nameptr;
+ 	uint16_t liu;
+ 	uint8_t lfi;
+@@ -122,7 +129,9 @@
+ 		nf_pos = (udf_ext0_offset(dir) >> 2);
+ 
+ 	fibh.soffset = fibh.eoffset = (nf_pos & ((dir->i_sb->s_blocksize - 1) >> 2)) << 2;
+-	if (inode_bmap(dir, nf_pos >> (dir->i_sb->s_blocksize_bits - 2),
++	if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB)
++		fibh.sbh = fibh.ebh = NULL;
++	else if (inode_bmap(dir, nf_pos >> (dir->i_sb->s_blocksize_bits - 2),
+ 		&bloc, &extoffset, &eloc, &elen, &offset, &bh) == (EXT_RECORDED_ALLOCATED >> 30))
+ 	{
+ 		offset >>= dir->i_sb->s_blocksize_bits;
+@@ -136,6 +145,34 @@
+ 		}
+ 		else
+ 			offset = 0;
++
++		if (!(fibh.sbh = fibh.ebh = udf_tread(dir->i_sb, block)))
++		{
++			udf_release_data(bh);
++			return -EIO;
++		}
++	
++		if (!(offset & ((16 >> (dir->i_sb->s_blocksize_bits - 9))-1)))
++		{
++			i = 16 >> (dir->i_sb->s_blocksize_bits - 9);
++			if (i+offset > (elen >> dir->i_sb->s_blocksize_bits))
++				i = (elen >> dir->i_sb->s_blocksize_bits)-offset;
++			for (num=0; i>0; i--)
++			{
++				block = udf_get_lb_pblock(dir->i_sb, eloc, offset+i);
++				tmp = udf_tgetblk(dir->i_sb, block);
++				if (tmp && !buffer_uptodate(tmp) && !buffer_locked(tmp))
++					bha[num++] = tmp;
++				else
++					brelse(tmp);
++			}
++			if (num)
++			{
++				ll_rw_block(READA, num, bha);
++				for (i=0; i<num; i++)
++					brelse(bha[i]);
++			}
++		}
+ 	}
+ 	else
+ 	{
+@@ -143,34 +180,6 @@
+ 		return -ENOENT;
+ 	}
+ 
+-	if (!(fibh.sbh = fibh.ebh = udf_tread(dir->i_sb, block)))
+-	{
+-		udf_release_data(bh);
+-		return -EIO;
+-	}
+-
+-	if (!(offset & ((16 >> (dir->i_sb->s_blocksize_bits - 9))-1)))
+-	{
+-		i = 16 >> (dir->i_sb->s_blocksize_bits - 9);
+-		if (i+offset > (elen >> dir->i_sb->s_blocksize_bits))
+-			i = (elen >> dir->i_sb->s_blocksize_bits)-offset;
+-		for (num=0; i>0; i--)
+-		{
+-			block = udf_get_lb_pblock(dir->i_sb, eloc, offset+i);
+-			tmp = udf_tgetblk(dir->i_sb, block);
+-			if (tmp && !buffer_uptodate(tmp) && !buffer_locked(tmp))
+-				bha[num++] = tmp;
+-			else
+-				brelse(tmp);
+-		}
+-		if (num)
+-		{
+-			ll_rw_block(READA, num, bha);
+-			for (i=0; i<num; i++)
+-				brelse(bha[i]);
+-		}
+-	}
+-
+ 	while ( nf_pos < size )
+ 	{
+ 		filp->f_pos = nf_pos + 1;
+@@ -228,7 +237,9 @@
+ 		}
+ 		else
+ 		{
+-			iblock = udf_get_lb_pblock(dir->i_sb, lelb_to_cpu(cfi.icb.extLocation), 0);
++			lb_addr tloc = lelb_to_cpu(cfi.icb.extLocation);
++
++			iblock = udf_get_lb_pblock(dir->i_sb, tloc, 0);
+ 			flen = udf_get_filename(dir->i_sb, nameptr, fname, lfi);
+ 			dt_type = DT_UNKNOWN;
+ 		}
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/directory.c linuxmips-2.4.30/fs/udf/directory.c
+--- linuxmips-2.4.30.ref/fs/udf/directory.c	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/directory.c	2007-05-10 10:49:29.000000000 -0700
+@@ -17,6 +17,7 @@
+  */
+ 
+ #include "udfdecl.h"
++#include "udf_i.h"
+ 
+ #include <linux/fs.h>
+ #include <linux/string.h>
+@@ -84,6 +85,24 @@
+ 
+ 	fibh->soffset = fibh->eoffset;
+ 
++	if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB)
++	{
++		fi = udf_get_fileident(UDF_I_DATA(dir) -
++			(UDF_I_EFE(dir) ?
++				sizeof(struct extendedFileEntry) :
++				sizeof(struct fileEntry)),
++			dir->i_sb->s_blocksize, &(fibh->eoffset));
++
++		if (!fi)
++			return NULL;
++
++		*nf_pos += ((fibh->eoffset - fibh->soffset) >> 2);
++
++		memcpy((uint8_t *)cfi, (uint8_t *)fi, sizeof(struct fileIdentDesc));
++
++		return fi;
++	}
++
+ 	if (fibh->eoffset == dir->i_sb->s_blocksize)
+ 	{
+ 		int lextoffset = *extoffset;
+@@ -275,53 +294,43 @@
+ }
+ 
+ short_ad *
+-udf_get_fileshortad(void * buffer, int maxoffset, int *offset, int inc)
++udf_get_fileshortad(uint8_t *ptr, int maxoffset, int *offset, int inc)
+ {
+-	short_ad * sa;
+-	uint8_t * ptr;
++	short_ad *sa;
+ 
+-	if ( (!buffer) || (!offset) )
++	if ( (!ptr) || (!offset) )
+ 	{
+ 		printk(KERN_ERR "udf: udf_get_fileshortad() invalidparms\n");
+ 		return NULL;
+ 	}
+ 
+-	ptr = (uint8_t *)buffer;
+-
+-	if ( (*offset > 0) && (*offset < maxoffset) )
+-		ptr += *offset;
+-	else
++	if ( (*offset < 0) || ((*offset + sizeof(short_ad)) > maxoffset) )
+ 		return NULL;
+-
+-	if ((sa = (short_ad *)ptr)->extLength == 0)
++	else if ((sa = (short_ad *)ptr)->extLength == 0)
+ 		return NULL;
+-	else if (inc)
+-		(*offset) += sizeof(short_ad);
++
++	if (inc)
++		*offset += sizeof(short_ad);
+ 	return sa;
+ }
+ 
+ long_ad *
+-udf_get_filelongad(void * buffer, int maxoffset, int * offset, int inc)
++udf_get_filelongad(uint8_t *ptr, int maxoffset, int * offset, int inc)
+ {
+-	long_ad * la;
+-	uint8_t * ptr;
++	long_ad *la;
+ 
+-	if ( (!buffer) || !(offset) ) 
++	if ( (!ptr) || (!offset) ) 
+ 	{
+ 		printk(KERN_ERR "udf: udf_get_filelongad() invalidparms\n");
+ 		return NULL;
+ 	}
+ 
+-	ptr = (uint8_t *)buffer;
+-
+-	if ( (*offset > 0) && (*offset < maxoffset) )
+-		ptr += *offset;
+-	else
++	if ( (*offset < 0) || ((*offset + sizeof(long_ad)) > maxoffset) )
+ 		return NULL;
+-
+-	if ((la = (long_ad *)ptr)->extLength == 0)
++	else if ((la = (long_ad *)ptr)->extLength == 0)
+ 		return NULL;
+-	else if (inc)
+-		(*offset) += sizeof(long_ad);
++
++	if (inc)
++		*offset += sizeof(long_ad);
+ 	return la;
+ }
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/ecma_167.h linuxmips-2.4.30/fs/udf/ecma_167.h
+--- linuxmips-2.4.30.ref/fs/udf/ecma_167.h	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/ecma_167.h	2007-05-10 10:49:29.000000000 -0700
+@@ -4,7 +4,7 @@
+  * This file is based on ECMA-167 3rd edition (June 1997)
+  * http://www.ecma.ch
+  *
+- * Copyright (c) 2001-2002  Ben Fennema <bfennema@falcon.csc.calpoly.edu>
++ * Copyright (c) 2001-2003  Ben Fennema <bfennema@falcon.csc.calpoly.edu>
+  * All rights reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -606,7 +606,7 @@
+ #define FE_RECORD_FMT_CRLF		0x0A
+ #define FE_RECORD_FMT_LFCR		0x0B
+ 
+-#define Record Display Attributes (ECMA 167r3 4/14.9.8) */
++/* Record Display Attributes (ECMA 167r3 4/14.9.8) */
+ #define FE_RECORD_DISPLAY_ATTR_UNDEF	0x00
+ #define FE_RECORD_DISPLAY_ATTR_1	0x01
+ #define FE_RECORD_DISPLAY_ATTR_2	0x02
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/file.c linuxmips-2.4.30/fs/udf/file.c
+--- linuxmips-2.4.30.ref/fs/udf/file.c	2004-08-14 11:39:02.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/file.c	2007-05-10 10:49:29.000000000 -0700
+@@ -39,6 +39,7 @@
+ #include <linux/errno.h>
+ #include <linux/locks.h>
+ #include <linux/smp_lock.h>
++#include <linux/pagemap.h>
+ 
+ #include "udf_i.h"
+ #include "udf_sb.h"
+@@ -46,64 +47,36 @@
+ static int udf_adinicb_readpage(struct file *file, struct page * page)
+ {
+ 	struct inode *inode = page->mapping->host;
+-
+-	struct buffer_head *bh;
+-	int block;
+ 	char *kaddr;
+-	int err = 0;
+ 
+ 	if (!PageLocked(page))
+ 		PAGE_BUG(page);
+ 
+ 	kaddr = kmap(page);
+ 	memset(kaddr, 0, PAGE_CACHE_SIZE);
+-	block = udf_get_lb_pblock(inode->i_sb, UDF_I_LOCATION(inode), 0);
+-	bh = sb_bread(inode->i_sb, block);
+-	if (!bh)
+-	{
+-		SetPageError(page);
+-		err = -EIO;
+-		goto out;
+-	}
+-	memcpy(kaddr, bh->b_data + udf_ext0_offset(inode), inode->i_size);
+-	brelse(bh);
++	memcpy(kaddr, UDF_I_DATA(inode) + UDF_I_LENEATTR(inode), inode->i_size);
+ 	flush_dcache_page(page);
+ 	SetPageUptodate(page);
+-out:
+ 	kunmap(page);
+-	UnlockPage(page);
+-	return err;
++	unlock_page(page);
++	return 0;
+ }
+ 
+ static int udf_adinicb_writepage(struct page *page)
+ {
+ 	struct inode *inode = page->mapping->host;
+-
+-	struct buffer_head *bh;
+-	int block;
+ 	char *kaddr;
+-	int err = 0;
+ 
+ 	if (!PageLocked(page))
+ 		PAGE_BUG(page);
+ 
+ 	kaddr = kmap(page);
+-	block = udf_get_lb_pblock(inode->i_sb, UDF_I_LOCATION(inode), 0);
+-	bh = sb_bread(inode->i_sb, block);
+-	if (!bh)
+-	{
+-		SetPageError(page);
+-		err = -EIO;
+-		goto out;
+-	}
+-	memcpy(bh->b_data + udf_ext0_offset(inode), kaddr, inode->i_size);
+-	mark_buffer_dirty(bh);
+-	brelse(bh);
++	memcpy(UDF_I_DATA(inode) + UDF_I_LENEATTR(inode), kaddr, inode->i_size);
++	mark_inode_dirty(inode);
+ 	SetPageUptodate(page);
+-out:
+ 	kunmap(page);
+-	UnlockPage(page);
+-	return err;
++	unlock_page(page);
++	return 0;
+ }
+ 
+ static int udf_adinicb_prepare_write(struct file *file, struct page *page, unsigned offset, unsigned to)
+@@ -115,39 +88,25 @@
+ static int udf_adinicb_commit_write(struct file *file, struct page *page, unsigned offset, unsigned to)
+ {
+ 	struct inode *inode = page->mapping->host;
+-
+-	struct buffer_head *bh;
+-	int block;
+ 	char *kaddr = page_address(page);
+-	int err = 0;
+ 
+-	block = udf_get_lb_pblock(inode->i_sb, UDF_I_LOCATION(inode), 0);
+-	bh = sb_bread(inode->i_sb, block);
+-	if (!bh)
+-	{
+-		SetPageError(page);
+-		err = -EIO;
+-		goto out;
+-	}
+-	memcpy(bh->b_data + udf_file_entry_alloc_offset(inode) + offset,
++	memcpy(UDF_I_DATA(inode) + UDF_I_LENEATTR(inode) + offset,
+ 		kaddr + offset, to - offset);
+-	mark_buffer_dirty(bh);
+-	brelse(bh);
++	mark_inode_dirty(inode);
+ 	SetPageUptodate(page);
+-out:
+ 	kunmap(page);
+ 	/* only one page here */
+ 	if (to > inode->i_size)
+ 		inode->i_size = to;
+-	return err;
++	return 0;
+ }
+ 
+ struct address_space_operations udf_adinicb_aops = {
+-	readpage:		udf_adinicb_readpage,
+-	writepage:		udf_adinicb_writepage,
+-	sync_page:		block_sync_page,
+-	prepare_write:		udf_adinicb_prepare_write,
+-	commit_write:		udf_adinicb_commit_write,
++	.readpage		= udf_adinicb_readpage,
++	.writepage		= udf_adinicb_writepage,
++	.sync_page		= block_sync_page,
++	.prepare_write		= udf_adinicb_prepare_write,
++	.commit_write		= udf_adinicb_commit_write,
+ };
+ 
+ static ssize_t udf_file_write(struct file * file, const char * buf,
+@@ -155,8 +114,7 @@
+ {
+ 	ssize_t retval;
+ 	struct inode *inode = file->f_dentry->d_inode;
+-	int err;
+-	loff_t pos;
++	int err, pos;
+ 
+ 	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
+ 	{
+@@ -165,11 +123,8 @@
+ 		else
+ 			pos = *ppos;
+ 
+-		if (pos < 0 || pos + count < pos)
+-			return 0;
+-
+-		if (inode->i_sb->s_blocksize - udf_file_entry_alloc_offset(inode) <
+-			pos + count)
++		if (inode->i_sb->s_blocksize < (udf_file_entry_alloc_offset(inode) +
++			pos + count))
+ 		{
+ 			udf_expand_file_adinicb(inode, pos + count, &err);
+ 			if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
+@@ -235,9 +190,6 @@
+ 	unsigned long arg)
+ {
+ 	int result = -EINVAL;
+-	struct buffer_head *bh = NULL;
+-	long_ad eaicb;
+-	uint8_t *ea = NULL;
+ 
+ 	if ( permission(inode, MAY_READ) != 0 )
+ 	{
+@@ -252,7 +204,6 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	/* first, do ioctls that don't need to udf_read */
+ 	switch (cmd)
+ 	{
+ 		case UDF_GETVOLIDENT:
+@@ -270,50 +221,16 @@
+ 
+ 			return result;
+ 		}
+-	}
+-
+-	/* ok, we need to read the inode */
+-	bh = udf_tread(inode->i_sb,
+-		udf_get_lb_pblock(inode->i_sb, UDF_I_LOCATION(inode), 0));
+-
+-	if (!bh)
+-	{
+-		udf_debug("bread failed (inode=%ld)\n", inode->i_ino);
+-		return -EIO;
+-	}
+-
+-	if (UDF_I_EXTENDED_FE(inode) == 0)
+-	{
+-		struct fileEntry *fe;
+-
+-		fe = (struct fileEntry *)bh->b_data;
+-		eaicb = lela_to_cpu(fe->extendedAttrICB);
+-		if (UDF_I_LENEATTR(inode))
+-			ea = fe->extendedAttr;
+-	}
+-	else
+-	{
+-		struct extendedFileEntry *efe;
+-
+-		efe = (struct extendedFileEntry *)bh->b_data;
+-		eaicb = lela_to_cpu(efe->extendedAttrICB);
+-		if (UDF_I_LENEATTR(inode))
+-			ea = efe->extendedAttr;
+-	}
+-
+-	switch (cmd) 
+-	{
+ 		case UDF_GETEASIZE:
+ 			result = put_user(UDF_I_LENEATTR(inode), (int *)arg);
+ 			break;
+ 
+ 		case UDF_GETEABLOCK:
+-			result = copy_to_user((char *)arg, ea,
++			result = copy_to_user((char *)arg, UDF_I_DATA(inode),
+ 				UDF_I_LENEATTR(inode)) ? -EFAULT : 0;
+ 			break;
+ 	}
+ 
+-	udf_release_data(bh);
+ 	return result;
+ }
+ 
+@@ -361,15 +278,15 @@
+ }
+ 
+ struct file_operations udf_file_operations = {
+-	read:			generic_file_read,
+-	ioctl:			udf_ioctl,
+-	open:			udf_open_file,
+-	mmap:			generic_file_mmap,
+-	write:			udf_file_write,
+-	release:		udf_release_file,
+-	fsync:			udf_fsync_file,
++	.read			= generic_file_read,
++	.ioctl			= udf_ioctl,
++	.open			= udf_open_file,
++	.mmap			= generic_file_mmap,
++	.write			= udf_file_write,
++	.release		= udf_release_file,
++	.fsync			= udf_fsync_file,
+ };
+ 
+ struct inode_operations udf_file_inode_operations = {
+-	truncate:		udf_truncate,
++	.truncate		= udf_truncate,
+ };
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/fsync.c linuxmips-2.4.30/fs/udf/fsync.c
+--- linuxmips-2.4.30.ref/fs/udf/fsync.c	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/fsync.c	2007-05-10 10:49:29.000000000 -0700
+@@ -45,7 +45,9 @@
+ 	int err;
+ 
+ 	err = fsync_inode_buffers(inode);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,15)
+ 	err |= fsync_inode_data_buffers(inode);
++#endif
+ 	if (!(inode->i_state & I_DIRTY))
+ 		return err;
+ 	if (datasync && !(inode->i_state & I_DIRTY_DATASYNC))
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/ialloc.c linuxmips-2.4.30/fs/udf/ialloc.c
+--- linuxmips-2.4.30.ref/fs/udf/ialloc.c	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/ialloc.c	2007-05-10 10:49:29.000000000 -0700
+@@ -28,6 +28,7 @@
+ #include <linux/locks.h>
+ #include <linux/quotaops.h>
+ #include <linux/udf_fs.h>
++#include <linux/slab.h>
+ 
+ #include "udf_i.h"
+ #include "udf_sb.h"
+@@ -44,7 +45,12 @@
+ 	 * Note: we must free any quota before locking the superblock,
+ 	 * as writing the quota to disk may need the lock as well.
+ 	 */
++#ifndef OLD_QUOTA
+ 	DQUOT_FREE_INODE(inode);
++#else
++	DQUOT_INIT(inode);
++	DQUOT_FREE_INODE(sb, inode);
++#endif
+ 	DQUOT_DROP(inode);
+ 
+ 	lock_super(sb);
+@@ -69,7 +75,11 @@
+ 	udf_free_blocks(sb, NULL, UDF_I_LOCATION(inode), 0, 1);
+ }
+ 
++#ifndef OLD_QUOTA
+ struct inode * udf_new_inode (struct inode *dir, int mode, int * err)
++#else
++struct inode * udf_new_inode (const struct inode *dir, int mode, int * err)
++#endif
+ {
+ 	struct super_block *sb;
+ 	struct inode * inode;
+@@ -95,6 +105,11 @@
+ 	}
+ 	lock_super(sb);
+ 
++	UDF_I_UNIQUE(inode) = 0;
++	UDF_I_LENEXTENTS(inode) = 0;
++	UDF_I_NEXT_ALLOC_BLOCK(inode) = 0;
++	UDF_I_NEXT_ALLOC_GOAL(inode) = 0;
++	UDF_I_STRAT4096(inode) = 0;
+ 	if (UDF_SB_LVIDBH(sb))
+ 	{
+ 		struct logicalVolHeaderDesc *lvhd;
+@@ -130,13 +145,20 @@
+ 	inode->i_blocks = 0;
+ 	UDF_I_LENEATTR(inode) = 0;
+ 	UDF_I_LENALLOC(inode) = 0;
++	UDF_I_USE(inode) = 0;
+ 	if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_USE_EXTENDED_FE))
+ 	{
+-		UDF_I_EXTENDED_FE(inode) = 1;
++		UDF_I_EFE(inode) = 1;
+ 		UDF_UPDATE_UDFREV(inode->i_sb, UDF_VERS_USE_EXTENDED_FE);
++		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry), GFP_KERNEL);
++		memset(UDF_I_DATA(inode), 0x00, inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry));
+ 	}
+ 	else
+-		UDF_I_EXTENDED_FE(inode) = 0;
++	{
++		UDF_I_EFE(inode) = 0;
++		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct fileEntry), GFP_KERNEL);
++		memset(UDF_I_DATA(inode), 0x00, inode->i_sb->s_blocksize - sizeof(struct fileEntry));
++	}
+ 	if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_USE_AD_IN_ICB))
+ 		UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_IN_ICB;
+ 	else if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_USE_SHORT_AD))
+@@ -147,15 +169,20 @@
+ 		UDF_I_CRTIME(inode) = CURRENT_TIME;
+ 	UDF_I_UMTIME(inode) = UDF_I_UCTIME(inode) =
+ 		UDF_I_UCRTIME(inode) = CURRENT_UTIME;
+-	UDF_I_NEW_INODE(inode) = 1;
+ 	insert_inode_hash(inode);
+ 	mark_inode_dirty(inode);
+ 
+ 	unlock_super(sb);
++#ifndef OLD_QUOTA
+ 	if (DQUOT_ALLOC_INODE(inode))
++#else
++	if (DQUOT_ALLOC_INODE(sb, inode))
++#endif
+ 	{
+ 		DQUOT_DROP(inode);
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,10)
+ 		inode->i_flags |= S_NOQUOTA;
++#endif
+ 		inode->i_nlink = 0;
+ 		iput(inode);
+ 		*err = -EDQUOT;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/inode.c linuxmips-2.4.30/fs/udf/inode.c
+--- linuxmips-2.4.30.ref/fs/udf/inode.c	2002-06-26 15:36:22.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/inode.c	2007-05-10 10:49:29.000000000 -0700
+@@ -16,7 +16,7 @@
+  *  Each contributing author retains all rights to their own work.
+  *
+  *  (C) 1998 Dave Boynton
+- *  (C) 1998-2001 Ben Fennema
++ *  (C) 1998-2003 Ben Fennema
+  *  (C) 1999-2000 Stelias Computing Inc
+  *
+  * HISTORY
+@@ -38,13 +38,17 @@
+ #include <linux/mm.h>
+ #include <linux/smp_lock.h>
+ #include <linux/module.h>
++#include <linux/pagemap.h>
++#include <linux/slab.h>
+ 
+ #include "udf_i.h"
+ #include "udf_sb.h"
+ 
+ MODULE_AUTHOR("Ben Fennema");
+ MODULE_DESCRIPTION("Universal Disk Format Filesystem");
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,10)
+ MODULE_LICENSE("GPL");
++#endif
+ 
+ #define EXTENT_MERGE_SIZE 5
+ 
+@@ -105,30 +109,26 @@
+  */
+ void udf_delete_inode(struct inode * inode)
+ {
+-	lock_kernel();
+-
+ 	if (is_bad_inode(inode))
+ 		goto no_delete;
+ 
+ 	inode->i_size = 0;
+ 	udf_truncate(inode);
++	lock_kernel();
++
+ 	udf_update_inode(inode, IS_SYNC(inode));
+ 	udf_free_inode(inode);
+ 
+ 	unlock_kernel();
+ 	return;
+ no_delete:
+-	unlock_kernel();
+ 	clear_inode(inode);
+ }
+ 
+-void udf_discard_prealloc(struct inode * inode)
++void udf_clear_inode(struct inode *inode)
+ {
+-	if (inode->i_size && inode->i_size != UDF_I_LENEXTENTS(inode) &&
+-		UDF_I_ALLOCTYPE(inode) != ICBTAG_FLAG_AD_IN_ICB)
+-	{
+-		udf_truncate_extents(inode);
+-	}
++	kfree(UDF_I_DATA(inode));
++	UDF_I_DATA(inode) = NULL;
+ }
+ 
+ static int udf_writepage(struct page *page)
+@@ -152,20 +152,18 @@
+ }
+ 
+ struct address_space_operations udf_aops = {
+-	readpage:		udf_readpage,
+-	writepage:		udf_writepage,
+-	sync_page:		block_sync_page,
+-	prepare_write:		udf_prepare_write,
+-	commit_write:		generic_commit_write,
+-	bmap:			udf_bmap,
++	.readpage		= udf_readpage,
++	.writepage		= udf_writepage,
++	.sync_page		= block_sync_page,
++	.prepare_write		= udf_prepare_write,
++	.commit_write		= generic_commit_write,
++	.bmap			= udf_bmap,
+ };
+ 
+ void udf_expand_file_adinicb(struct inode * inode, int newsize, int * err)
+ {
+-	struct buffer_head *bh = NULL;
+ 	struct page *page;
+ 	char *kaddr;
+-	int block;
+ 
+ 	/* from now on we have normal address_space methods */
+ 	inode->i_data.a_ops = &udf_aops;
+@@ -180,10 +178,6 @@
+ 		return;
+ 	}
+ 
+-	block = udf_get_lb_pblock(inode->i_sb, UDF_I_LOCATION(inode), 0);
+-	bh = udf_tread(inode->i_sb, block);
+-	if (!bh)
+-		return;
+ 	page = grab_cache_page(inode->i_mapping, 0);
+ 	if (!PageLocked(page))
+ 		PAGE_BUG(page);
+@@ -192,21 +186,19 @@
+ 		kaddr = kmap(page);
+ 		memset(kaddr + UDF_I_LENALLOC(inode), 0x00,
+ 			PAGE_CACHE_SIZE - UDF_I_LENALLOC(inode));
+-		memcpy(kaddr, bh->b_data + udf_file_entry_alloc_offset(inode),
++		memcpy(kaddr, UDF_I_DATA(inode) + UDF_I_LENEATTR(inode),
+ 			UDF_I_LENALLOC(inode));
+ 		flush_dcache_page(page);
+ 		SetPageUptodate(page);
+ 		kunmap(page);
+ 	}
+-	memset(bh->b_data + udf_file_entry_alloc_offset(inode),
+-		0, UDF_I_LENALLOC(inode));
++	memset(UDF_I_DATA(inode) + UDF_I_LENEATTR(inode), 0x00,
++		UDF_I_LENALLOC(inode));
+ 	UDF_I_LENALLOC(inode) = 0;
+ 	if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_USE_SHORT_AD))
+ 		UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_SHORT;
+ 	else
+ 		UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_LONG;
+-	mark_buffer_dirty_inode(bh, inode);
+-	udf_release_data(bh);
+ 
+ 	inode->i_data.a_ops->writepage(page);
+ 	page_cache_release(page);
+@@ -221,18 +213,21 @@
+ 	struct buffer_head *sbh = NULL, *dbh = NULL;
+ 	lb_addr bloc, eloc;
+ 	uint32_t elen, extoffset;
++	uint8_t alloctype;
+ 
+ 	struct udf_fileident_bh sfibh, dfibh;
+ 	loff_t f_pos = udf_ext0_offset(inode) >> 2;
+ 	int size = (udf_ext0_offset(inode) + inode->i_size) >> 2;
+ 	struct fileIdentDesc cfi, *sfi, *dfi;
+ 
++	if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_USE_SHORT_AD))
++		alloctype = ICBTAG_FLAG_AD_SHORT;
++	else
++		alloctype = ICBTAG_FLAG_AD_LONG;
++
+ 	if (!inode->i_size)
+ 	{
+-		if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_USE_SHORT_AD))
+-			UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_SHORT;
+-		else
+-			UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_LONG;
++		UDF_I_ALLOCTYPE(inode) = alloctype;
+ 		mark_inode_dirty(inode);
+ 		return NULL;
+ 	}
+@@ -248,9 +243,6 @@
+ 		UDF_I_LOCATION(inode).partitionReferenceNum, 0);
+ 	if (!newblock)
+ 		return NULL;
+-	sbh = udf_tread(inode->i_sb, inode->i_ino);
+-	if (!sbh)
+-		return NULL;
+ 	dbh = udf_tgetblk(inode->i_sb, newblock);
+ 	if (!dbh)
+ 		return NULL;
+@@ -261,18 +253,19 @@
+ 	mark_buffer_dirty_inode(dbh, inode);
+ 
+ 	sfibh.soffset = sfibh.eoffset = (f_pos & ((inode->i_sb->s_blocksize - 1) >> 2)) << 2;
+-	sfibh.sbh = sfibh.ebh = sbh;
++	sbh = sfibh.sbh = sfibh.ebh = NULL;
+ 	dfibh.soffset = dfibh.eoffset = 0;
+ 	dfibh.sbh = dfibh.ebh = dbh;
+ 	while ( (f_pos < size) )
+ 	{
++		UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_IN_ICB;
+ 		sfi = udf_fileident_read(inode, &f_pos, &sfibh, &cfi, NULL, NULL, NULL, NULL, NULL, NULL);
+ 		if (!sfi)
+ 		{
+-			udf_release_data(sbh);
+ 			udf_release_data(dbh);
+ 			return NULL;
+ 		}
++		UDF_I_ALLOCTYPE(inode) = alloctype;
+ 		sfi->descTag.tagLocation = *block;
+ 		dfibh.soffset = dfibh.eoffset;
+ 		dfibh.eoffset += (sfibh.eoffset - sfibh.soffset);
+@@ -280,21 +273,15 @@
+ 		if (udf_write_fi(inode, sfi, dfi, &dfibh, sfi->impUse,
+ 			sfi->fileIdent + sfi->lengthOfImpUse))
+ 		{
+-			udf_release_data(sbh);
++			UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_IN_ICB;
+ 			udf_release_data(dbh);
+ 			return NULL;
+ 		}
+ 	}
+ 	mark_buffer_dirty_inode(dbh, inode);
+ 
+-	memset(sbh->b_data + udf_file_entry_alloc_offset(inode),
+-		0, UDF_I_LENALLOC(inode));
+-
++	memset(UDF_I_DATA(inode) + UDF_I_LENEATTR(inode), 0, UDF_I_LENALLOC(inode));
+ 	UDF_I_LENALLOC(inode) = 0;
+-	if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_USE_SHORT_AD))
+-		UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_SHORT;
+-	else
+-		UDF_I_ALLOCTYPE(inode) = ICBTAG_FLAG_AD_LONG;
+ 	bloc = UDF_I_LOCATION(inode);
+ 	eloc.logicalBlockNum = *block;
+ 	eloc.partitionReferenceNum = UDF_I_LOCATION(inode).partitionReferenceNum;
+@@ -304,7 +291,9 @@
+ 	udf_add_aext(inode, &bloc, &extoffset, eloc, elen, &sbh, 0);
+ 	/* UniqueID stuff */
+ 
+-	mark_buffer_dirty(sbh);
++#ifdef OLD_QUOTA
++	inode->i_blocks = inode->i_sb->s_blocksize / 512;
++#endif
+ 	udf_release_data(sbh);
+ 	mark_inode_dirty(inode);
+ 	inode->i_version ++;
+@@ -526,11 +515,8 @@
+ 		else
+ 			lastblock = 1;
+ 	}
++	udf_release_data(cbh);
+ 	udf_release_data(nbh);
+-	if (!pbh)
+-		pbh = cbh;
+-	else
+-		udf_release_data(cbh);
+ 
+ 	/* if the current extent is not recorded but allocated, get the
+ 		block in the extent corresponding to the requested block */
+@@ -589,6 +575,9 @@
+ 	UDF_I_NEXT_ALLOC_GOAL(inode) = newblocknum;
+ 	inode->i_ctime = CURRENT_TIME;
+ 	UDF_I_UCTIME(inode) = CURRENT_UTIME;
++#ifdef OLD_QUOTA
++	inode->i_blocks += inode->i_sb->s_blocksize / 512;
++#endif
+ 
+ 	if (IS_SYNC(inode))
+ 		udf_sync_inode(inode);
+@@ -606,7 +595,7 @@
+ 		int curr = *c;
+ 		int blen = ((laarr[curr].extLength & UDF_EXTENT_LENGTH_MASK) +
+ 			inode->i_sb->s_blocksize - 1) >> inode->i_sb->s_blocksize_bits;
+-		int type = laarr[curr].extLength & ~UDF_EXTENT_LENGTH_MASK;
++		int8_t etype = (laarr[curr].extLength >> 30);
+ 
+ 		if (blen == 1)
+ 			;
+@@ -623,7 +612,7 @@
+ 
+ 		if (offset)
+ 		{
+-			if ((type >> 30) == (EXT_NOT_RECORDED_ALLOCATED >> 30))
++			if (etype == (EXT_NOT_RECORDED_ALLOCATED >> 30))
+ 			{
+ 				udf_free_blocks(inode->i_sb, inode, laarr[curr].extLocation, 0, offset);
+ 				laarr[curr].extLength = EXT_NOT_RECORDED_NOT_ALLOCATED |
+@@ -632,7 +621,7 @@
+ 				laarr[curr].extLocation.partitionReferenceNum = 0;
+ 			}
+ 			else
+-				laarr[curr].extLength = type |
++				laarr[curr].extLength = (etype << 30) |
+ 					(offset << inode->i_sb->s_blocksize_bits);
+ 			curr ++;
+ 			(*c) ++;
+@@ -640,7 +629,7 @@
+ 		}
+ 		
+ 		laarr[curr].extLocation.logicalBlockNum = newblocknum;
+-		if ((type >> 30) == (EXT_NOT_RECORDED_NOT_ALLOCATED >> 30))
++		if (etype == (EXT_NOT_RECORDED_NOT_ALLOCATED >> 30))
+ 			laarr[curr].extLocation.partitionReferenceNum =
+ 				UDF_I_LOCATION(inode).partitionReferenceNum;
+ 		laarr[curr].extLength = EXT_RECORDED_ALLOCATED |
+@@ -649,9 +638,9 @@
+ 
+ 		if (blen != offset + 1)
+ 		{
+-			if ((type >> 30) == (EXT_NOT_RECORDED_ALLOCATED >> 30))
++			if (etype == (EXT_NOT_RECORDED_ALLOCATED >> 30))
+ 				laarr[curr].extLocation.logicalBlockNum += (offset + 1);
+-			laarr[curr].extLength = type |
++			laarr[curr].extLength = (etype << 30) |
+ 				((blen - (offset + 1)) << inode->i_sb->s_blocksize_bits);
+ 			curr ++;
+ 			(*endnum) ++;
+@@ -732,7 +721,7 @@
+ 
+ 				if (elen > numalloc)
+ 				{
+-					laarr[c].extLength -=
++					laarr[i].extLength -=
+ 						(numalloc << inode->i_sb->s_blocksize_bits);
+ 					numalloc = 0;
+ 				}
+@@ -772,8 +761,8 @@
+ 					laarr[i+1].extLength = (laarr[i+1].extLength -
+ 						(laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) +
+ 						UDF_EXTENT_LENGTH_MASK) & ~(inode->i_sb->s_blocksize-1);
+-					laarr[i].extLength = (UDF_EXTENT_LENGTH_MASK + 1) -
+-						inode->i_sb->s_blocksize;
++					laarr[i].extLength = (laarr[i].extLength & UDF_EXTENT_FLAG_MASK) +
++						(UDF_EXTENT_LENGTH_MASK + 1) - inode->i_sb->s_blocksize;
+ 					laarr[i+1].extLocation.logicalBlockNum =
+ 						laarr[i].extLocation.logicalBlockNum +
+ 						((laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) >>
+@@ -792,6 +781,47 @@
+ 				}
+ 			}
+ 		}
++		else if (((laarr[i].extLength >> 30) == (EXT_NOT_RECORDED_ALLOCATED >> 30)) &&
++			((laarr[i+1].extLength >> 30) == (EXT_NOT_RECORDED_NOT_ALLOCATED >> 30)))
++		{
++			udf_free_blocks(inode->i_sb, inode, laarr[i].extLocation, 0,
++				((laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) +
++				inode->i_sb->s_blocksize - 1) >> inode->i_sb->s_blocksize_bits);
++			laarr[i].extLocation.logicalBlockNum = 0;
++			laarr[i].extLocation.partitionReferenceNum = 0;
++
++			if (((laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) +
++				(laarr[i+1].extLength & UDF_EXTENT_LENGTH_MASK) +
++				inode->i_sb->s_blocksize - 1) & ~UDF_EXTENT_LENGTH_MASK)
++			{
++				laarr[i+1].extLength = (laarr[i+1].extLength -
++					(laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) +
++					UDF_EXTENT_LENGTH_MASK) & ~(inode->i_sb->s_blocksize-1);
++				laarr[i].extLength = (laarr[i].extLength & UDF_EXTENT_FLAG_MASK) +
++					(UDF_EXTENT_LENGTH_MASK + 1) - inode->i_sb->s_blocksize;
++			}
++			else
++			{
++				laarr[i].extLength = laarr[i+1].extLength +
++					(((laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) +
++					inode->i_sb->s_blocksize - 1) & ~(inode->i_sb->s_blocksize-1));
++				if (*endnum > (i+2))
++					memmove(&laarr[i+1], &laarr[i+2],
++						sizeof(long_ad) * (*endnum - (i+2)));
++				i --;
++				(*endnum) --;
++			}
++		}
++		else if ((laarr[i].extLength >> 30) == (EXT_NOT_RECORDED_ALLOCATED >> 30))
++		{
++			udf_free_blocks(inode->i_sb, inode, laarr[i].extLocation, 0,
++				((laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) +
++				inode->i_sb->s_blocksize - 1) >> inode->i_sb->s_blocksize_bits);
++			laarr[i].extLocation.logicalBlockNum = 0;
++			laarr[i].extLocation.partitionReferenceNum = 0;
++			laarr[i].extLength = (laarr[i].extLength & UDF_EXTENT_LENGTH_MASK) |
++				EXT_NOT_RECORDED_NOT_ALLOCATED;
++		}
+ 	}
+ }
+ 
+@@ -854,7 +884,6 @@
+ void udf_truncate(struct inode * inode)
+ {
+ 	int offset;
+-	struct buffer_head *bh;
+ 	int err;
+ 
+ 	if (!(S_ISREG(inode->i_mode) || S_ISDIR(inode->i_mode) ||
+@@ -863,6 +892,7 @@
+ 	if (IS_APPEND(inode) || IS_IMMUTABLE(inode))
+ 		return;
+ 
++	lock_kernel();
+ 	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
+ 	{
+ 		if (inode->i_sb->s_blocksize < (udf_file_entry_alloc_offset(inode) +
+@@ -872,6 +902,7 @@
+ 			if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
+ 			{
+ 				inode->i_size = UDF_I_LENALLOC(inode);
++				unlock_kernel();
+ 				return;
+ 			}
+ 			else
+@@ -879,16 +910,8 @@
+ 		}
+ 		else
+ 		{
+-			offset = (inode->i_size & (inode->i_sb->s_blocksize - 1)) +
+-				udf_file_entry_alloc_offset(inode);
+-
+-			if ((bh = udf_tread(inode->i_sb,
+-				udf_get_lb_pblock(inode->i_sb, UDF_I_LOCATION(inode), 0))))
+-			{
+-				memset(bh->b_data + offset, 0x00, inode->i_sb->s_blocksize - offset);
+-				mark_buffer_dirty(bh);
+-				udf_release_data(bh);
+-			}
++			offset = inode->i_size & (inode->i_sb->s_blocksize - 1);
++			memset(UDF_I_DATA(inode) + UDF_I_LENEATTR(inode) + offset, 0x00, inode->i_sb->s_blocksize - offset - udf_file_entry_alloc_offset(inode));
+ 			UDF_I_LENALLOC(inode) = inode->i_size;
+ 		}
+ 	}
+@@ -904,6 +927,7 @@
+ 		udf_sync_inode (inode);
+ 	else
+ 		mark_inode_dirty(inode);
++	unlock_kernel();
+ }
+ 
+ /*
+@@ -927,6 +951,7 @@
+ void
+ udf_read_inode(struct inode *inode)
+ {
++	UDF_I_DATA(inode) = NULL;
+ 	memset(&UDF_I_LOCATION(inode), 0xFF, sizeof(lb_addr));
+ }
+ 
+@@ -941,7 +966,6 @@
+ 	 * Set defaults, but the inode is still incomplete!
+ 	 * Note: get_new_inode() sets the following on a new inode:
+ 	 *      i_sb = sb
+-	 *      i_dev = sb->s_dev;
+ 	 *      i_no = ino
+ 	 *      i_flags = sb->s_flags
+ 	 *      i_state = 0
+@@ -1034,11 +1058,11 @@
+ 	struct extendedFileEntry *efe;
+ 	time_t convtime;
+ 	long convtime_usec;
+-	int offset, alen;
++	int offset;
+ 
+ 	inode->i_version = ++event;
+-	UDF_I_NEW_INODE(inode) = 0;
+ 
++ 	fe = (struct fileEntry *)bh->b_data;
+ 	fe = (struct fileEntry *)bh->b_data;
+ 	efe = (struct extendedFileEntry *)bh->b_data;
+ 
+@@ -1048,15 +1072,35 @@
+ 		UDF_I_STRAT4096(inode) = 1;
+ 
+ 	UDF_I_ALLOCTYPE(inode) = le16_to_cpu(fe->icbTag.flags) & ICBTAG_FLAG_AD_MASK;
++	UDF_I_UNIQUE(inode) = 0;
++	UDF_I_LENEATTR(inode) = 0;
++	UDF_I_LENEXTENTS(inode) = 0;
++	UDF_I_LENALLOC(inode) = 0;
++	UDF_I_NEXT_ALLOC_BLOCK(inode) = 0;
++	UDF_I_NEXT_ALLOC_GOAL(inode) = 0;
+ 	if (le16_to_cpu(fe->descTag.tagIdent) == TAG_IDENT_EFE)
+-		UDF_I_EXTENDED_FE(inode) = 1;
++	{
++		UDF_I_EFE(inode) = 1;
++		UDF_I_USE(inode) = 0;
++		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry), GFP_KERNEL);
++		memcpy(UDF_I_DATA(inode), bh->b_data + sizeof(struct extendedFileEntry), inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry));
++	}
+ 	else if (le16_to_cpu(fe->descTag.tagIdent) == TAG_IDENT_FE)
+-		UDF_I_EXTENDED_FE(inode) = 0;
++	{
++		UDF_I_EFE(inode) = 0;
++		UDF_I_USE(inode) = 0;
++		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct fileEntry), GFP_KERNEL);
++		memcpy(UDF_I_DATA(inode), bh->b_data + sizeof(struct fileEntry), inode->i_sb->s_blocksize - sizeof(struct fileEntry));
++	}
+ 	else if (le16_to_cpu(fe->descTag.tagIdent) == TAG_IDENT_USE)
+ 	{
++		UDF_I_EFE(inode) = 0;
++		UDF_I_USE(inode) = 1;
+ 		UDF_I_LENALLOC(inode) =
+ 			le32_to_cpu(
+ 				((struct unallocSpaceEntry *)bh->b_data)->lengthAllocDescs);
++		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct unallocSpaceEntry), GFP_KERNEL);
++		memcpy(UDF_I_DATA(inode), bh->b_data + sizeof(struct unallocSpaceEntry), inode->i_sb->s_blocksize - sizeof(struct unallocSpaceEntry));
+ 		return;
+ 	}
+ 
+@@ -1079,7 +1123,7 @@
+ 	UDF_I_NEXT_ALLOC_BLOCK(inode) = 0;
+ 	UDF_I_NEXT_ALLOC_GOAL(inode) = 0;
+ 
+-	if (UDF_I_EXTENDED_FE(inode) == 0)
++	if (UDF_I_EFE(inode) == 0)
+ 	{
+ 		inode->i_blocks = le64_to_cpu(fe->logicalBlocksRecorded) <<
+ 			(inode->i_sb->s_blocksize_bits - 9);
+@@ -1122,7 +1166,6 @@
+ 		UDF_I_LENEATTR(inode) = le32_to_cpu(fe->lengthExtendedAttr);
+ 		UDF_I_LENALLOC(inode) = le32_to_cpu(fe->lengthAllocDescs);
+ 		offset = sizeof(struct fileEntry) + UDF_I_LENEATTR(inode);
+-		alen = offset + UDF_I_LENALLOC(inode);
+ 	}
+ 	else
+ 	{
+@@ -1179,7 +1222,6 @@
+ 		UDF_I_LENEATTR(inode) = le32_to_cpu(efe->lengthExtendedAttr);
+ 		UDF_I_LENALLOC(inode) = le32_to_cpu(efe->lengthAllocDescs);
+ 		offset = sizeof(struct extendedFileEntry) + UDF_I_LENEATTR(inode);
+-		alen = offset + UDF_I_LENALLOC(inode);
+ 	}
+ 
+ 	switch (fe->icbTag.fileType)
+@@ -1195,6 +1237,7 @@
+ 		case ICBTAG_FILE_TYPE_REALTIME:
+ 		case ICBTAG_FILE_TYPE_REGULAR:
+ 		case ICBTAG_FILE_TYPE_UNDEF:
++		case ICBTAG_FILE_TYPE_VAT20:
+ 		{
+ 			if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
+ 				inode->i_data.a_ops = &udf_adinicb_aops;
+@@ -1220,6 +1263,11 @@
+ 			init_special_inode(inode, inode->i_mode | S_IFIFO, 0);
+ 			break;
+ 		}
++		case ICBTAG_FILE_TYPE_SOCKET:
++		{
++			init_special_inode(inode, inode->i_mode | S_IFSOCK, 0);
++			break;
++		}
+ 		case ICBTAG_FILE_TYPE_SYMLINK:
+ 		{
+ 			inode->i_data.a_ops = &udf_symlink_aops;
+@@ -1227,6 +1275,10 @@
+ 			inode->i_mode = S_IFLNK|S_IRWXUGO;
+ 			break;
+ 		}
++		case ICBTAG_FILE_TYPE_MAIN:
++		case ICBTAG_FILE_TYPE_MIRROR:
++		case ICBTAG_FILE_TYPE_BITMAP:
++			break;
+ 		default:
+ 		{
+ 			printk(KERN_ERR "udf: udf_fill_inode(ino %ld) failed unknown file type=%d\n",
+@@ -1237,18 +1289,16 @@
+ 	}
+ 	if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode))
+ 	{
+-		struct buffer_head *tbh = NULL;
+ 		struct deviceSpec *dsea =
+ 			(struct deviceSpec *)
+-				udf_get_extendedattr(inode, 12, 1, &tbh);
++				udf_get_extendedattr(inode, 12, 1);
+ 
+ 		if (dsea)
+ 		{
+-			init_special_inode(inode, inode->i_mode,
+-				((le32_to_cpu(dsea->majorDeviceIdent)) << 8) |
+-				(le32_to_cpu(dsea->minorDeviceIdent) & 0xFF));
++			init_special_inode(inode, inode->i_mode, MKDEV(
++				le32_to_cpu(dsea->majorDeviceIdent),
++				le32_to_cpu(dsea->minorDeviceIdent)));
+ 			/* Developer ID ??? */
+-			udf_release_data(tbh);
+ 		}
+ 		else
+ 		{
+@@ -1325,19 +1375,11 @@
+ 		udf_debug("bread failure\n");
+ 		return -EIO;
+ 	}
++
++	memset(bh->b_data, 0x00, inode->i_sb->s_blocksize);
++
+ 	fe = (struct fileEntry *)bh->b_data;
+ 	efe = (struct extendedFileEntry *)bh->b_data;
+-	if (UDF_I_NEW_INODE(inode) == 1)
+-	{
+-		if (UDF_I_EXTENDED_FE(inode) == 0)
+-			memset(bh->b_data, 0x00, sizeof(struct fileEntry));
+-		else
+-			memset(bh->b_data, 0x00, sizeof(struct extendedFileEntry));
+-		memset(bh->b_data + udf_file_entry_alloc_offset(inode) +
+-			UDF_I_LENALLOC(inode), 0x0, inode->i_sb->s_blocksize -
+-			udf_file_entry_alloc_offset(inode) - UDF_I_LENALLOC(inode));
+-		UDF_I_NEW_INODE(inode) = 0;
+-	}
+ 
+ 	if (le16_to_cpu(fe->descTag.tagIdent) == TAG_IDENT_USE)
+ 	{
+@@ -1345,6 +1387,7 @@
+ 			(struct unallocSpaceEntry *)bh->b_data;
+ 
+ 		use->lengthAllocDescs = cpu_to_le32(UDF_I_LENALLOC(inode));
++		memcpy(bh->b_data + sizeof(struct unallocSpaceEntry), UDF_I_DATA(inode), inode->i_sb->s_blocksize - sizeof(struct unallocSpaceEntry));
+ 		crclen = sizeof(struct unallocSpaceEntry) + UDF_I_LENALLOC(inode) -
+ 			sizeof(tag);
+ 		use->descTag.tagLocation = cpu_to_le32(UDF_I_LOCATION(inode).logicalBlockNum);
+@@ -1387,17 +1430,16 @@
+ 	if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode))
+ 	{
+ 		regid *eid;
+-		struct buffer_head *tbh = NULL;
+ 		struct deviceSpec *dsea =
+ 			(struct deviceSpec *)
+-				udf_get_extendedattr(inode, 12, 1, &tbh);	
++				udf_get_extendedattr(inode, 12, 1);	
+ 
+ 		if (!dsea)
+ 		{
+ 			dsea = (struct deviceSpec *)
+ 				udf_add_extendedattr(inode,
+ 					sizeof(struct deviceSpec) +
+-					sizeof(regid), 12, 0x3, &tbh);
++					sizeof(regid), 12, 0x3);
+ 			dsea->attrType = 12;
+ 			dsea->attrSubtype = 1;
+ 			dsea->attrLength = sizeof(struct deviceSpec) +
+@@ -1411,12 +1453,11 @@
+ 		eid->identSuffix[1] = UDF_OS_ID_LINUX;
+ 		dsea->majorDeviceIdent = kdev_t_to_nr(inode->i_rdev) >> 8;
+ 		dsea->minorDeviceIdent = kdev_t_to_nr(inode->i_rdev) & 0xFF;
+-		mark_buffer_dirty_inode(tbh, inode);
+-		udf_release_data(tbh);
+ 	}
+ 
+-	if (UDF_I_EXTENDED_FE(inode) == 0)
++	if (UDF_I_EFE(inode) == 0)
+ 	{
++		memcpy(bh->b_data + sizeof(struct fileEntry), UDF_I_DATA(inode), inode->i_sb->s_blocksize - sizeof(struct fileEntry));
+ 		fe->logicalBlocksRecorded = cpu_to_le64(
+ 			(inode->i_blocks + (1 << (inode->i_sb->s_blocksize_bits - 9)) - 1) >>
+ 			(inode->i_sb->s_blocksize_bits - 9));
+@@ -1439,6 +1480,7 @@
+ 	}
+ 	else
+ 	{
++		memcpy(bh->b_data + sizeof(struct extendedFileEntry), UDF_I_DATA(inode), inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry));
+ 		efe->objectSize = cpu_to_le64(inode->i_size);
+ 		efe->logicalBlocksRecorded = cpu_to_le64(
+ 			(inode->i_blocks + (1 << (inode->i_sb->s_blocksize_bits - 9)) - 1) >>
+@@ -1507,6 +1549,8 @@
+ 		fe->icbTag.fileType = ICBTAG_FILE_TYPE_CHAR;
+ 	else if (S_ISFIFO(inode->i_mode))
+ 		fe->icbTag.fileType = ICBTAG_FILE_TYPE_FIFO;
++	else if (S_ISSOCK(inode->i_mode))
++		fe->icbTag.fileType = ICBTAG_FILE_TYPE_SOCKET;
+ 
+ 	icbflags =	UDF_I_ALLOCTYPE(inode) |
+ 			((inode->i_mode & S_ISUID) ? ICBTAG_FLAG_SETUID : 0) |
+@@ -1619,17 +1663,12 @@
+ 	long_ad *lad = NULL;
+ 	struct allocExtDesc *aed;
+ 	int8_t etype;
++	uint8_t *ptr;
+ 
+-	if (!(*bh))
+-	{
+-		if (!(*bh = udf_tread(inode->i_sb,
+-			udf_get_lb_pblock(inode->i_sb, *bloc, 0))))
+-		{
+-			udf_debug("reading block %d failed!\n",
+-				udf_get_lb_pblock(inode->i_sb, *bloc, 0));
+-			return -1;
+-		}
+-	}
++	if (!*bh)
++		ptr = UDF_I_DATA(inode) + *extoffset - udf_file_entry_alloc_offset(inode) + UDF_I_LENEATTR(inode);
++	else
++		ptr = (*bh)->b_data + *extoffset;
+ 
+ 	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_SHORT)
+ 		adsize = sizeof(short_ad);
+@@ -1645,7 +1684,7 @@
+ 		int err, loffset;
+ 		lb_addr obloc = *bloc;
+ 
+-		if (!(bloc->logicalBlockNum = udf_new_block(inode->i_sb, inode,
++		if (!(bloc->logicalBlockNum = udf_new_block(inode->i_sb, NULL,
+ 			obloc.partitionReferenceNum, obloc.logicalBlockNum, &err)))
+ 		{
+ 			return -1;
+@@ -1668,7 +1707,7 @@
+ 		{
+ 			loffset = *extoffset;
+ 			aed->lengthAllocDescs = cpu_to_le32(adsize);
+-			sptr = (*bh)->b_data + *extoffset - adsize;
++			sptr = ptr - adsize;
+ 			dptr = nbh->b_data + sizeof(struct allocExtDesc);
+ 			memcpy(dptr, sptr, adsize);
+ 			*extoffset = sizeof(struct allocExtDesc) + adsize;
+@@ -1677,10 +1716,10 @@
+ 		{
+ 			loffset = *extoffset + adsize;
+ 			aed->lengthAllocDescs = cpu_to_le32(0);
+-			sptr = (*bh)->b_data + *extoffset;
++			sptr = ptr;
+ 			*extoffset = sizeof(struct allocExtDesc);
+ 
+-			if (memcmp(&UDF_I_LOCATION(inode), &obloc, sizeof(lb_addr)))
++			if (*bh)
+ 			{
+ 				aed = (struct allocExtDesc *)(*bh)->b_data;
+ 				aed->lengthAllocDescs =
+@@ -1720,18 +1759,23 @@
+ 				break;
+ 			}
+ 		}
+-		if (!UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_STRICT) || UDF_SB_UDFREV(inode->i_sb) >= 0x0201)
+-			udf_update_tag((*bh)->b_data, loffset);
++		if (*bh)
++		{
++			if (!UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_STRICT) || UDF_SB_UDFREV(inode->i_sb) >= 0x0201)
++				udf_update_tag((*bh)->b_data, loffset);
++			else
++				udf_update_tag((*bh)->b_data, sizeof(struct allocExtDesc));
++			mark_buffer_dirty_inode(*bh, inode);
++			udf_release_data(*bh);
++		}
+ 		else
+-			udf_update_tag((*bh)->b_data, sizeof(struct allocExtDesc));
+-		mark_buffer_dirty_inode(*bh, inode);
+-		udf_release_data(*bh);
++			mark_inode_dirty(inode);
+ 		*bh = nbh;
+ 	}
+ 
+ 	etype = udf_write_aext(inode, *bloc, extoffset, eloc, elen, *bh, inc);
+ 
+-	if (!memcmp(&UDF_I_LOCATION(inode), bloc, sizeof(lb_addr)))
++	if (!*bh)
+ 	{
+ 		UDF_I_LENALLOC(inode) += adsize;
+ 		mark_inode_dirty(inode);
+@@ -1755,49 +1799,40 @@
+     lb_addr eloc, uint32_t elen, struct buffer_head *bh, int inc)
+ {
+ 	int adsize;
+-	short_ad *sad = NULL;
+-	long_ad *lad = NULL;
++	uint8_t *ptr;
+ 
+-	if (!(bh))
+-	{
+-		if (!(bh = udf_tread(inode->i_sb,
+-			udf_get_lb_pblock(inode->i_sb, bloc, 0))))
+-		{
+-			udf_debug("reading block %d failed!\n",
+-				udf_get_lb_pblock(inode->i_sb, bloc, 0));
+-			return -1;
+-		}
+-	}
++	if (!bh)
++		ptr = UDF_I_DATA(inode) + *extoffset - udf_file_entry_alloc_offset(inode) + UDF_I_LENEATTR(inode);
+ 	else
++	{
++		ptr = bh->b_data + *extoffset;
+ 		atomic_inc(&bh->b_count);
+-
+-	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_SHORT)
+-		adsize = sizeof(short_ad);
+-	else if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_LONG)
+-		adsize = sizeof(long_ad);
+-	else
+-		return -1;
++	}
+ 
+ 	switch (UDF_I_ALLOCTYPE(inode))
+ 	{
+ 		case ICBTAG_FLAG_AD_SHORT:
+ 		{
+-			sad = (short_ad *)((bh)->b_data + *extoffset);
++			short_ad *sad = (short_ad *)ptr;
+ 			sad->extLength = cpu_to_le32(elen);
+ 			sad->extPosition = cpu_to_le32(eloc.logicalBlockNum);
++			adsize = sizeof(short_ad);
+ 			break;
+ 		}
+ 		case ICBTAG_FLAG_AD_LONG:
+ 		{
+-			lad = (long_ad *)((bh)->b_data + *extoffset);
++			long_ad *lad = (long_ad *)ptr;
+ 			lad->extLength = cpu_to_le32(elen);
+ 			lad->extLocation = cpu_to_lelb(eloc);
+ 			memset(lad->impUse, 0x00, sizeof(lad->impUse));
++			adsize = sizeof(long_ad);
+ 			break;
+ 		}
++		default:
++			return -1;
+ 	}
+ 
+-	if (memcmp(&UDF_I_LOCATION(inode), &bloc, sizeof(lb_addr)))
++	if (bh)
+ 	{
+ 		if (!UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_STRICT) || UDF_SB_UDFREV(inode->i_sb) >= 0x0201)
+ 		{
+@@ -1806,30 +1841,28 @@
+ 				le32_to_cpu(aed->lengthAllocDescs) + sizeof(struct allocExtDesc));
+ 		}
+ 		mark_buffer_dirty_inode(bh, inode);
++		udf_release_data(bh);
+ 	}
+ 	else
+-	{
+ 		mark_inode_dirty(inode);
+-		mark_buffer_dirty(bh);
+-	}
+ 
+ 	if (inc)
+ 		*extoffset += adsize;
+-	udf_release_data(bh);
+ 	return (elen >> 30);
+ }
+ 
+ int8_t udf_next_aext(struct inode *inode, lb_addr *bloc, int *extoffset,
+ 	lb_addr *eloc, uint32_t *elen, struct buffer_head **bh, int inc)
+ {
+-	uint16_t tagIdent;
+-	int pos, alen;
+ 	int8_t etype;
+ 
+-	if (!(*bh))
++	while ((etype = udf_current_aext(inode, bloc, extoffset, eloc, elen, bh, inc)) ==
++		(EXT_NEXT_EXTENT_ALLOCDECS >> 30))
+ 	{
+-		if (!(*bh = udf_tread(inode->i_sb,
+-			udf_get_lb_pblock(inode->i_sb, *bloc, 0))))
++		*bloc = *eloc;
++		*extoffset = sizeof(struct allocExtDesc);
++		udf_release_data(*bh);
++		if (!(*bh = udf_tread(inode->i_sb, udf_get_lb_pblock(inode->i_sb, *bloc, 0))))
+ 		{
+ 			udf_debug("reading block %d failed!\n",
+ 				udf_get_lb_pblock(inode->i_sb, *bloc, 0));
+@@ -1837,154 +1870,38 @@
+ 		}
+ 	}
+ 
+-	tagIdent = le16_to_cpu(((tag *)(*bh)->b_data)->tagIdent);
+-
+-	if (!memcmp(&UDF_I_LOCATION(inode), bloc, sizeof(lb_addr)))
+-	{
+-		if (tagIdent == TAG_IDENT_FE || tagIdent == TAG_IDENT_EFE ||
+-			UDF_I_NEW_INODE(inode))
+-		{
+-			pos = udf_file_entry_alloc_offset(inode);
+-			alen = UDF_I_LENALLOC(inode) + pos;
+-		}
+-		else if (tagIdent == TAG_IDENT_USE)
+-		{
+-			pos = sizeof(struct unallocSpaceEntry);
+-			alen = UDF_I_LENALLOC(inode) + pos;
+-		}
+-		else
+-			return -1;
+-	}
+-	else if (tagIdent == TAG_IDENT_AED)
+-	{
+-		struct allocExtDesc *aed = (struct allocExtDesc *)(*bh)->b_data;
+-
+-		pos = sizeof(struct allocExtDesc);
+-		alen = le32_to_cpu(aed->lengthAllocDescs) + pos;
+-	}
+-	else
+-		return -1;
+-
+-	if (!(*extoffset))
+-		*extoffset = pos;
+-
+-	switch (UDF_I_ALLOCTYPE(inode))
+-	{
+-		case ICBTAG_FLAG_AD_SHORT:
+-		{
+-			short_ad *sad;
+-
+-			if (!(sad = udf_get_fileshortad((*bh)->b_data, alen, extoffset, inc)))
+-				return -1;
+-
+-			if ((etype = le32_to_cpu(sad->extLength) >> 30) == (EXT_NEXT_EXTENT_ALLOCDECS >> 30))
+-			{
+-				bloc->logicalBlockNum = le32_to_cpu(sad->extPosition);
+-				*extoffset = 0;
+-				udf_release_data(*bh);
+-				*bh = NULL;
+-				return udf_next_aext(inode, bloc, extoffset, eloc, elen, bh, inc);
+-			}
+-			else
+-			{
+-				eloc->logicalBlockNum = le32_to_cpu(sad->extPosition);
+-				eloc->partitionReferenceNum = UDF_I_LOCATION(inode).partitionReferenceNum;
+-				*elen = le32_to_cpu(sad->extLength) & UDF_EXTENT_LENGTH_MASK;
+-			}
+-			break;
+-		}
+-		case ICBTAG_FLAG_AD_LONG:
+-		{
+-			long_ad *lad;
+-
+-			if (!(lad = udf_get_filelongad((*bh)->b_data, alen, extoffset, inc)))
+-				return -1;
+-
+-			if ((etype = le32_to_cpu(lad->extLength) >> 30) == (EXT_NEXT_EXTENT_ALLOCDECS >> 30))
+-			{
+-				*bloc = lelb_to_cpu(lad->extLocation);
+-				*extoffset = 0;
+-				udf_release_data(*bh);
+-				*bh = NULL;
+-				return udf_next_aext(inode, bloc, extoffset, eloc, elen, bh, inc);
+-			}
+-			else
+-			{
+-				*eloc = lelb_to_cpu(lad->extLocation);
+-				*elen = le32_to_cpu(lad->extLength) & UDF_EXTENT_LENGTH_MASK;
+-			}
+-			break;
+-		}
+-		case ICBTAG_FLAG_AD_IN_ICB:
+-		{
+-			if (UDF_I_LENALLOC(inode) == 0)
+-				return -1;
+-			etype = (EXT_RECORDED_ALLOCATED >> 30);
+-			*eloc = UDF_I_LOCATION(inode);
+-			*elen = UDF_I_LENALLOC(inode);
+-			break;
+-		}
+-		default:
+-		{
+-			udf_debug("alloc_type = %d unsupported\n", UDF_I_ALLOCTYPE(inode));
+-			return -1;
+-		}
+-	}
+-	if (*elen)
+-		return etype;
+-
+-	udf_debug("Empty Extent, inode=%ld, alloctype=%d, eloc=%d, elen=%d, etype=%d, extoffset=%d\n",
+-		inode->i_ino, UDF_I_ALLOCTYPE(inode), eloc->logicalBlockNum, *elen, etype, *extoffset);
+-	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_SHORT)
+-		*extoffset -= sizeof(short_ad);
+-	else if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_LONG)
+-		*extoffset -= sizeof(long_ad);
+-	return -1;
++	return etype;
+ }
+ 
+ int8_t udf_current_aext(struct inode *inode, lb_addr *bloc, int *extoffset,
+ 	lb_addr *eloc, uint32_t *elen, struct buffer_head **bh, int inc)
+ {
+-	int pos, alen;
++	int alen;
+ 	int8_t etype;
++	uint8_t *ptr;
+ 
+-	if (!(*bh))
+-	{
+-		if (!(*bh = udf_tread(inode->i_sb,
+-			udf_get_lb_pblock(inode->i_sb, *bloc, 0))))
+-		{
+-			udf_debug("reading block %d failed!\n",
+-				udf_get_lb_pblock(inode->i_sb, *bloc, 0));
+-			return -1;
+-		}
+-	}
+-
+-	if (!memcmp(&UDF_I_LOCATION(inode), bloc, sizeof(lb_addr)))
++	if (!*bh)
+ 	{
+-		if (!(UDF_I_EXTENDED_FE(inode)))
+-			pos = sizeof(struct fileEntry) + UDF_I_LENEATTR(inode);
+-		else
+-			pos = sizeof(struct extendedFileEntry) + UDF_I_LENEATTR(inode);
+-		alen = UDF_I_LENALLOC(inode) + pos;
++		if (!(*extoffset))
++			*extoffset = udf_file_entry_alloc_offset(inode);
++		ptr = UDF_I_DATA(inode) + *extoffset - udf_file_entry_alloc_offset(inode) + UDF_I_LENEATTR(inode);
++		alen = udf_file_entry_alloc_offset(inode) + UDF_I_LENALLOC(inode);
+ 	}
+ 	else
+ 	{
+-		struct allocExtDesc *aed = (struct allocExtDesc *)(*bh)->b_data;
+-
+-		pos = sizeof(struct allocExtDesc);
+-		alen = le32_to_cpu(aed->lengthAllocDescs) + pos;
++		if (!(*extoffset))
++			*extoffset = sizeof(struct allocExtDesc);
++		ptr = (*bh)->b_data + *extoffset;
++		alen = sizeof(struct allocExtDesc) + le32_to_cpu(((struct allocExtDesc *)(*bh)->b_data)->lengthAllocDescs);
+ 	}
+ 
+-	if (!(*extoffset))
+-		*extoffset = pos;
+-
+ 	switch (UDF_I_ALLOCTYPE(inode))
+ 	{
+ 		case ICBTAG_FLAG_AD_SHORT:
+ 		{
+ 			short_ad *sad;
+ 
+-			if (!(sad = udf_get_fileshortad((*bh)->b_data, alen, extoffset, inc)))
++			if (!(sad = udf_get_fileshortad(ptr, alen, extoffset, inc)))
+ 				return -1;
+ 
+ 			etype = le32_to_cpu(sad->extLength) >> 30;
+@@ -1997,7 +1914,7 @@
+ 		{
+ 			long_ad *lad;
+ 
+-			if (!(lad = udf_get_filelongad((*bh)->b_data, alen, extoffset, inc)))
++			if (!(lad = udf_get_filelongad(ptr, alen, extoffset, inc)))
+ 				return -1;
+ 
+ 			etype = le32_to_cpu(lad->extLength) >> 30;
+@@ -2005,21 +1922,22 @@
+ 			*elen = le32_to_cpu(lad->extLength) & UDF_EXTENT_LENGTH_MASK;
+ 			break;
+ 		}
++		case ICBTAG_FLAG_AD_IN_ICB:
++		{
++			etype = EXT_RECORDED_ALLOCATED;
++			eloc->logicalBlockNum = UDF_I_LOCATION(inode).logicalBlockNum;
++			eloc->partitionReferenceNum = UDF_I_LOCATION(inode).partitionReferenceNum;
++			*elen = UDF_I_LENALLOC(inode);
++			break;
++		}
+ 		default:
+ 		{
+ 			udf_debug("alloc_type = %d unsupported\n", UDF_I_ALLOCTYPE(inode));
+ 			return -1;
+ 		}
+ 	}
+-	if (*elen)
+-		return etype;
+ 
+-	udf_debug("Empty Extent!\n");
+-	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_SHORT)
+-		*extoffset -= sizeof(short_ad);
+-	else if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_LONG)
+-		*extoffset -= sizeof(long_ad);
+-	return -1;
++	return etype;
+ }
+ 
+ int8_t udf_insert_aext(struct inode *inode, lb_addr bloc, int extoffset,
+@@ -2029,17 +1947,7 @@
+ 	uint32_t oelen;
+ 	int8_t etype;
+ 
+-	if (!bh)
+-	{
+-		if (!(bh = udf_tread(inode->i_sb,
+-			udf_get_lb_pblock(inode->i_sb, bloc, 0))))
+-		{
+-			udf_debug("reading block %d failed!\n",
+-				udf_get_lb_pblock(inode->i_sb, bloc, 0));
+-			return -1;
+-		}
+-	}
+-	else
++	if (bh)
+ 		atomic_inc(&bh->b_count);
+ 
+ 	while ((etype = udf_next_aext(inode, &bloc, &extoffset, &oeloc, &oelen, &bh, 0)) != -1)
+@@ -2063,19 +1971,11 @@
+ 	int8_t etype;
+ 	struct allocExtDesc *aed;
+ 
+-	if (!(nbh))
++	if (nbh)
+ 	{
+-		if (!(nbh = udf_tread(inode->i_sb,
+-			udf_get_lb_pblock(inode->i_sb, nbloc, 0))))
+-		{
+-			udf_debug("reading block %d failed!\n",
+-				udf_get_lb_pblock(inode->i_sb, nbloc, 0));
+-			return -1;
+-		}
+-	}
+-	else
+ 		atomic_inc(&nbh->b_count);
+-	atomic_inc(&nbh->b_count);
++		atomic_inc(&nbh->b_count);
++	}
+ 
+ 	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_SHORT)
+ 		adsize = sizeof(short_ad);
+@@ -2094,7 +1994,7 @@
+ 	while ((etype = udf_next_aext(inode, &nbloc, &nextoffset, &eloc, &elen, &nbh, 1)) != -1)
+ 	{
+ 		udf_write_aext(inode, obloc, &oextoffset, eloc, (etype << 30) | elen, obh, 1);
+-		if (memcmp(&nbloc, &obloc, sizeof(lb_addr)))
++		if (obh != nbh)
+ 		{
+ 			obloc = nbloc;
+ 			udf_release_data(obh);
+@@ -2106,12 +2006,12 @@
+ 	memset(&eloc, 0x00, sizeof(lb_addr));
+ 	elen = 0;
+ 
+-	if (memcmp(&nbloc, &obloc, sizeof(lb_addr)))
++	if (nbh != obh)
+ 	{
+ 		udf_free_blocks(inode->i_sb, inode, nbloc, 0, 1);
+ 		udf_write_aext(inode, obloc, &oextoffset, eloc, elen, obh, 1);
+ 		udf_write_aext(inode, obloc, &oextoffset, eloc, elen, obh, 1);
+-		if (!memcmp(&UDF_I_LOCATION(inode), &obloc, sizeof(lb_addr)))
++		if (!obh)
+ 		{
+ 			UDF_I_LENALLOC(inode) -= (adsize * 2);
+ 			mark_inode_dirty(inode);
+@@ -2131,7 +2031,7 @@
+ 	else
+ 	{
+ 		udf_write_aext(inode, obloc, &oextoffset, eloc, elen, obh, 1);
+-		if (!memcmp(&UDF_I_LOCATION(inode), &obloc, sizeof(lb_addr)))
++		if (!obh)
+ 		{
+ 			UDF_I_LENALLOC(inode) -= adsize;
+ 			mark_inode_dirty(inode);
+@@ -2206,9 +2106,7 @@
+ 		ret = 0;
+ 
+ 	unlock_kernel();
+-
+-	if (bh)
+-		udf_release_data(bh);
++	udf_release_data(bh);
+ 
+ 	if (UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_VARCONV))
+ 		return udf_fixed_to_variable(ret);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/lowlevel.c linuxmips-2.4.30/fs/udf/lowlevel.c
+--- linuxmips-2.4.30.ref/fs/udf/lowlevel.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/lowlevel.c	2007-05-10 10:49:29.000000000 -0700
+@@ -71,20 +71,12 @@
+ udf_get_last_block(struct super_block *sb)
+ {
+ 	struct block_device *bdev = sb->s_bdev;
+-	int ret;
+ 	unsigned long lblock = 0;
+ 
+-	ret = ioctl_by_bdev(bdev, CDROM_LAST_WRITTEN, (unsigned long) &lblock);
++	if (ioctl_by_bdev(bdev, CDROM_LAST_WRITTEN, (unsigned long) &lblock))
++		lblock = bdev->bd_inode->i_size >> sb->s_blocksize_bits;
+ 
+-	if (ret) /* Hard Disk */
+-	{
+-		ret = ioctl_by_bdev(bdev, BLKGETSIZE, (unsigned long) &lblock);
+-
+-		if (!ret && lblock != 0x7FFFFFFF)
+-			lblock = ((512 * lblock) / sb->s_blocksize);
+-	}
+-
+-	if (!ret && lblock)
++	if (lblock)
+ 		return lblock - 1;
+ 	else
+ 		return 0;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/misc.c linuxmips-2.4.30/fs/udf/misc.c
+--- linuxmips-2.4.30.ref/fs/udf/misc.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/misc.c	2007-05-10 10:49:29.000000000 -0700
+@@ -16,7 +16,7 @@
+  *	Each contributing author retains all rights to their own work.
+  *
+  *  (C) 1998 Dave Boynton
+- *  (C) 1998-2001 Ben Fennema
++ *  (C) 1998-2004 Ben Fennema
+  *  (C) 1999-2000 Stelias Computing Inc
+  *
+  * HISTORY
+@@ -33,19 +33,7 @@
+ #include "udf_i.h"
+ #include "udf_sb.h"
+ 
+-uint32_t
+-udf64_low32(uint64_t indat)
+-{
+-	return indat & 0x00000000FFFFFFFFULL;
+-}
+-
+-uint32_t
+-udf64_high32(uint64_t indat)
+-{
+-	return indat >> 32;
+-}
+-
+-extern struct buffer_head *
++struct buffer_head *
+ udf_tgetblk(struct super_block *sb, int block)
+ {
+ 	if (UDF_QUERY_FLAG(sb, UDF_FLAG_VARCONV))
+@@ -54,7 +42,7 @@
+ 		return sb_getblk(sb, block);
+ }
+ 
+-extern struct buffer_head *
++struct buffer_head *
+ udf_tread(struct super_block *sb, int block)
+ {
+ 	if (UDF_QUERY_FLAG(sb, UDF_FLAG_VARCONV))
+@@ -63,44 +51,26 @@
+ 		return sb_bread(sb, block);
+ }
+ 
+-extern struct genericFormat *
++struct genericFormat *
+ udf_add_extendedattr(struct inode * inode, uint32_t size, uint32_t type,
+-	uint8_t loc, struct buffer_head **bh)
++	uint8_t loc)
+ {
+ 	uint8_t *ea = NULL, *ad = NULL;
+-	long_ad eaicb;
+ 	int offset;
++	uint16_t crclen;
++	int i;
+ 
+-	*bh = udf_tread(inode->i_sb, inode->i_ino);
+-
+-	if (UDF_I_EXTENDED_FE(inode) == 0)
+-	{
+-		struct fileEntry *fe;
+-
+-		fe = (struct fileEntry *)(*bh)->b_data;
+-		eaicb = lela_to_cpu(fe->extendedAttrICB);
+-		offset = sizeof(struct fileEntry);
+-	}
+-	else
+-	{
+-		struct extendedFileEntry *efe;
+-
+-		efe = (struct extendedFileEntry *)(*bh)->b_data;
+-		eaicb = lela_to_cpu(efe->extendedAttrICB);
+-		offset = sizeof(struct extendedFileEntry);
+-	}
+-
+-	ea = &(*bh)->b_data[offset];
++	ea = UDF_I_DATA(inode);
+ 	if (UDF_I_LENEATTR(inode))
+-		offset += UDF_I_LENEATTR(inode);
++		ad = UDF_I_DATA(inode) + UDF_I_LENEATTR(inode);
+ 	else
++	{
++		ad = ea;
+ 		size += sizeof(struct extendedAttrHeaderDesc);
++	}
+ 
+-	ad = &(*bh)->b_data[offset];
+-	if (UDF_I_LENALLOC(inode))
+-		offset += UDF_I_LENALLOC(inode);
+-
+-	offset = inode->i_sb->s_blocksize - offset;
++	offset = inode->i_sb->s_blocksize - udf_file_entry_alloc_offset(inode) -
++		UDF_I_LENALLOC(inode);
+ 
+ 	/* TODO - Check for FreeEASpace */
+ 
+@@ -120,7 +90,6 @@
+ 			if (le16_to_cpu(eahd->descTag.tagIdent) != TAG_IDENT_EAHD ||
+ 				le32_to_cpu(eahd->descTag.tagLocation) != UDF_I_LOCATION(inode).logicalBlockNum)
+ 			{
+-				udf_release_data(*bh);
+ 				return NULL;
+ 			}
+ 		}
+@@ -129,8 +98,11 @@
+ 			size -= sizeof(struct extendedAttrHeaderDesc);
+ 			UDF_I_LENEATTR(inode) += sizeof(struct extendedAttrHeaderDesc);
+ 			eahd->descTag.tagIdent = cpu_to_le16(TAG_IDENT_EAHD);
+-			eahd->descTag.descVersion = cpu_to_le16(2);
+-			eahd->descTag.tagSerialNum = cpu_to_le16(1);
++			if (UDF_SB_UDFREV(inode->i_sb) >= 0x0200)
++				eahd->descTag.descVersion = cpu_to_le16(3);
++			else
++				eahd->descTag.descVersion = cpu_to_le16(2);
++			eahd->descTag.tagSerialNum = cpu_to_le16(UDF_SB_SERIALNUM(inode->i_sb));
+ 			eahd->descTag.tagLocation = cpu_to_le32(UDF_I_LOCATION(inode).logicalBlockNum);
+ 			eahd->impAttrLocation = cpu_to_le32(0xFFFFFFFF);
+ 			eahd->appAttrLocation = cpu_to_le32(0xFFFFFFFF);
+@@ -168,45 +140,30 @@
+ 			}
+ 		}
+ 		/* rewrite CRC + checksum of eahd */
++		crclen = sizeof(struct extendedAttrHeaderDesc) - sizeof(tag);
++		eahd->descTag.descCRCLength = cpu_to_le16(crclen);
++		eahd->descTag.descCRC = cpu_to_le16(udf_crc((char *)eahd + sizeof(tag), crclen, 0));
++		eahd->descTag.tagChecksum = 0;
++		for (i=0; i<16; i++)
++			if (i != 4)
++				eahd->descTag.tagChecksum += ((uint8_t *)&(eahd->descTag))[i];
+ 		UDF_I_LENEATTR(inode) += size;
+ 		return (struct genericFormat *)&ea[offset];
+ 	}
+ 	if (loc & 0x02)
+ 	{
+ 	}
+-	udf_release_data(*bh);
+ 	return NULL;
+ }
+ 
+-extern struct genericFormat *
+-udf_get_extendedattr(struct inode * inode, uint32_t type, uint8_t subtype,
+-	struct buffer_head **bh)
++struct genericFormat *
++udf_get_extendedattr(struct inode *inode, uint32_t type, uint8_t subtype)
+ {
+ 	struct genericFormat *gaf;
+ 	uint8_t *ea = NULL;
+-	long_ad eaicb;
+ 	uint32_t offset;
+ 
+-	*bh = udf_tread(inode->i_sb, inode->i_ino);
+-
+-	if (UDF_I_EXTENDED_FE(inode) == 0)
+-	{
+-		struct fileEntry *fe;
+-
+-		fe = (struct fileEntry *)(*bh)->b_data;
+-		eaicb = lela_to_cpu(fe->extendedAttrICB);
+-		if (UDF_I_LENEATTR(inode))
+-			ea = fe->extendedAttr;
+-	}
+-	else
+-	{
+-		struct extendedFileEntry *efe;
+-
+-		efe = (struct extendedFileEntry *)(*bh)->b_data;
+-		eaicb = lela_to_cpu(efe->extendedAttrICB);
+-		if (UDF_I_LENEATTR(inode))
+-			ea = efe->extendedAttr;
+-	}
++	ea = UDF_I_DATA(inode);
+ 
+ 	if (UDF_I_LENEATTR(inode))
+ 	{
+@@ -217,7 +174,6 @@
+ 		if (le16_to_cpu(eahd->descTag.tagIdent) != TAG_IDENT_EAHD ||
+ 			le32_to_cpu(eahd->descTag.tagLocation) != UDF_I_LOCATION(inode).logicalBlockNum)
+ 		{
+-			udf_release_data(*bh);
+ 			return NULL;
+ 		}
+ 	
+@@ -237,12 +193,6 @@
+ 				offset += le32_to_cpu(gaf->attrLength);
+ 		}
+ 	}
+-
+-	udf_release_data(*bh);
+-	if (eaicb.extLength)
+-	{
+-		/* TODO */
+-	}
+ 	return NULL;
+ }
+ 
+@@ -256,7 +206,7 @@
+  *	July 1, 1997 - Andrew E. Mileski
+  *	Written, tested, and released.
+  */
+-extern struct buffer_head *
++struct buffer_head *
+ udf_read_tagged(struct super_block *sb, uint32_t block, uint32_t location, uint16_t *ident)
+ {
+ 	tag *tag_p;
+@@ -268,10 +218,10 @@
+ 	if (block == 0xFFFFFFFF)
+ 		return NULL;
+ 
+-	bh = udf_tread(sb, block);
++	bh = udf_tread(sb, block /*+ UDF_SB_SESSION(sb)*/);
+ 	if (!bh)
+ 	{
+-		udf_debug("block=%d, location=%d: read failed\n", block, location);
++		udf_debug("block=%d, location=%d: read failed\n", block /*+ UDF_SB_SESSION(sb)*/, location);
+ 		return NULL;
+ 	}
+ 
+@@ -282,7 +232,7 @@
+ 	if ( location != le32_to_cpu(tag_p->tagLocation) )
+ 	{
+ 		udf_debug("location mismatch block %u, tag %u != %u\n",
+-			block, le32_to_cpu(tag_p->tagLocation), location);
++			block /*+ UDF_SB_SESSION(sb)*/, le32_to_cpu(tag_p->tagLocation), location);
+ 		goto error_out;
+ 	}
+ 	
+@@ -314,14 +264,14 @@
+ 		return bh;
+ 	}
+ 	udf_debug("Crc failure block %d: crc = %d, crclen = %d\n",
+-		block, le16_to_cpu(tag_p->descCRC), le16_to_cpu(tag_p->descCRCLength));
++		block /*+ UDF_SB_SESSION(sb)*/, le16_to_cpu(tag_p->descCRC), le16_to_cpu(tag_p->descCRCLength));
+ 
+ error_out:
+ 	brelse(bh);
+ 	return NULL;
+ }
+ 
+-extern struct buffer_head *
++struct buffer_head *
+ udf_read_ptagged(struct super_block *sb, lb_addr loc, uint32_t offset, uint16_t *ident)
+ {
+ 	return udf_read_tagged(sb, udf_get_lb_pblock(sb, loc, offset),
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/namei.c linuxmips-2.4.30/fs/udf/namei.c
+--- linuxmips-2.4.30.ref/fs/udf/namei.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/namei.c	2007-05-10 10:49:29.000000000 -0700
+@@ -15,7 +15,7 @@
+  *              ftp://prep.ai.mit.edu/pub/gnu/GPL
+  *      Each contributing author retains all rights to their own work.
+  *
+- *  (C) 1998-2001 Ben Fennema
++ *  (C) 1998-2004 Ben Fennema
+  *  (C) 1999-2000 Stelias Computing Inc
+  *
+  * HISTORY
+@@ -36,11 +36,11 @@
+ #include <linux/locks.h>
+ #include <linux/smp_lock.h>
+ 
+-static inline int udf_match(int len, const char * const name, struct qstr *qs)
++static inline int udf_match(int len1, const char *name1, int len2, const char *name2)
+ {
+-	if (len != qs->len)
++	if (len1 != len2)
+ 		return 0;
+-	return !memcmp(name, qs->name, len);
++	return !memcmp(name1, name2, len1);
+ }
+ 
+ int udf_write_fi(struct inode *inode, struct fileIdentDesc *cfi,
+@@ -56,12 +56,16 @@
+ 	uint8_t lfi = cfi->lengthFileIdent;
+ 	int padlen = fibh->eoffset - fibh->soffset - liu - lfi -
+ 		sizeof(struct fileIdentDesc);
++	int adinicb = 0;
++
++	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
++		adinicb = 1;
+ 
+ 	offset = fibh->soffset + sizeof(struct fileIdentDesc);
+ 
+ 	if (impuse)
+ 	{
+-		if (offset + liu < 0)
++		if (adinicb || (offset + liu < 0))
+ 			memcpy((uint8_t *)sfi->impUse, impuse, liu);
+ 		else if (offset >= 0)
+ 			memcpy(fibh->ebh->b_data + offset, impuse, liu);
+@@ -76,7 +80,7 @@
+ 
+ 	if (fileident)
+ 	{
+-		if (offset + lfi < 0)
++		if (adinicb || (offset + lfi < 0))
+ 			memcpy((uint8_t *)sfi->fileIdent + liu, fileident, lfi);
+ 		else if (offset >= 0)
+ 			memcpy(fibh->ebh->b_data + offset, fileident, lfi);
+@@ -89,7 +93,7 @@
+ 
+ 	offset += lfi;
+ 
+-	if (offset + padlen < 0)
++	if (adinicb || (offset + padlen < 0))
+ 		memset((uint8_t *)sfi->padding + liu + lfi, 0x00, padlen);
+ 	else if (offset >= 0)
+ 		memset(fibh->ebh->b_data + offset, 0x00, padlen);
+@@ -123,7 +127,7 @@
+ 			checksum += ((uint8_t *)&cfi->descTag)[i];
+ 
+ 	cfi->descTag.tagChecksum = checksum;
+-	if (sizeof(struct fileIdentDesc) <= -fibh->soffset)
++	if (adinicb || (sizeof(struct fileIdentDesc) <= -fibh->soffset))
+ 		memcpy((uint8_t *)sfi, (uint8_t *)cfi, sizeof(struct fileIdentDesc));
+ 	else
+ 	{
+@@ -132,9 +136,14 @@
+ 			sizeof(struct fileIdentDesc) + fibh->soffset);
+ 	}
+ 
+-	if (fibh->sbh != fibh->ebh)
+-		mark_buffer_dirty_inode(fibh->ebh, inode);
+-	mark_buffer_dirty_inode(fibh->sbh, inode);
++	if (adinicb)
++		mark_inode_dirty(inode);
++	else
++	{
++		if (fibh->sbh != fibh->ebh)
++			mark_buffer_dirty_inode(fibh->ebh, inode);
++		mark_buffer_dirty_inode(fibh->sbh, inode);
++	}
+ 	return 0;
+ }
+ 
+@@ -146,7 +155,7 @@
+ 	struct fileIdentDesc *fi=NULL;
+ 	loff_t f_pos;
+ 	int block, flen;
+-	char fname[255];
++	char fname[UDF_NAME_LEN];
+ 	char *nameptr;
+ 	uint8_t lfi;
+ 	uint16_t liu;
+@@ -161,7 +170,9 @@
+ 	f_pos = (udf_ext0_offset(dir) >> 2);
+ 
+ 	fibh->soffset = fibh->eoffset = (f_pos & ((dir->i_sb->s_blocksize - 1) >> 2)) << 2;
+-	if (inode_bmap(dir, f_pos >> (dir->i_sb->s_blocksize_bits - 2),
++	if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB)
++		fibh->sbh = fibh->ebh = NULL;
++	else if (inode_bmap(dir, f_pos >> (dir->i_sb->s_blocksize_bits - 2),
+ 		&bloc, &extoffset, &eloc, &elen, &offset, &bh) == (EXT_RECORDED_ALLOCATED >> 30))
+ 	{
+ 		offset >>= dir->i_sb->s_blocksize_bits;
+@@ -175,6 +186,12 @@
+ 		}
+ 		else
+ 			offset = 0;
++
++		if (!(fibh->sbh = fibh->ebh = udf_tread(dir->i_sb, block)))
++		{
++			udf_release_data(bh);
++			return NULL;
++		}
+ 	}
+ 	else
+ 	{
+@@ -182,12 +199,6 @@
+ 		return NULL;
+ 	}
+ 
+-	if (!(fibh->sbh = fibh->ebh = udf_tread(dir->i_sb, block)))
+-	{
+-		udf_release_data(bh);
+-		return NULL;
+-	}
+-
+ 	while ( (f_pos < size) )
+ 	{
+ 		fi = udf_fileident_read(dir, &f_pos, fibh, cfi, &bloc, &extoffset, &eloc, &elen, &offset, &bh);
+@@ -241,7 +252,7 @@
+ 
+ 		if ((flen = udf_get_filename(dir->i_sb, nameptr, fname, lfi)))
+ 		{
+-			if (udf_match(flen, fname, &(dentry->d_name)))
++			if (udf_match(flen, fname, dentry->d_name.len, dentry->d_name.name))
+ 			{
+ 				udf_release_data(bh);
+ 				return fi;
+@@ -294,9 +305,10 @@
+ 	struct fileIdentDesc cfi, *fi;
+ 	struct udf_fileident_bh fibh;
+ 
+-	if (dentry->d_name.len > UDF_NAME_LEN)
++	if (dentry->d_name.len > UDF_NAME_LEN-2)
+ 		return ERR_PTR(-ENAMETOOLONG);
+ 
++	lock_kernel();
+ #ifdef UDF_RECOVERY
+ 	/* temporary shorthand for specifying files by inode number */
+ 	if (!strncmp(dentry->d_name.name, ".B=", 3) )
+@@ -304,7 +316,10 @@
+ 		lb_addr lb = { 0, simple_strtoul(dentry->d_name.name+3, NULL, 0) };
+ 		inode = udf_iget(dir->i_sb, lb);
+ 		if (!inode)
++		{
++			unlock_kernel();
+ 			return ERR_PTR(-EACCES);
++		}
+ 	}
+ 	else
+ #endif /* UDF_RECOVERY */
+@@ -317,8 +332,12 @@
+ 
+ 		inode = udf_iget(dir->i_sb, lelb_to_cpu(cfi.icb.extLocation));
+ 		if ( !inode )
++		{
++			unlock_kernel();
+ 			return ERR_PTR(-EACCES);
++		}
+ 	}
++	unlock_kernel();
+ 	d_add(dentry, inode);
+ 	return NULL;
+ }
+@@ -330,7 +349,6 @@
+ {
+ 	struct super_block *sb;
+ 	struct fileIdentDesc *fi=NULL;
+-	struct ustr unifilename;
+ 	char name[UDF_NAME_LEN], fname[UDF_NAME_LEN];
+ 	int namelen;
+ 	loff_t f_pos;
+@@ -355,30 +373,11 @@
+ 			return NULL;
+ 		}
+ 
+-		if ( !(udf_char_to_ustr(&unifilename, dentry->d_name.name, dentry->d_name.len)) )
++		if ( !(namelen = udf_put_filename(sb, dentry->d_name.name, name, dentry->d_name.len)))
+ 		{
+ 			*err = -ENAMETOOLONG;
+ 			return NULL;
+ 		}
+-
+-		if (UDF_QUERY_FLAG(sb, UDF_FLAG_UTF8))
+-		{
+-			if ( !(namelen = udf_UTF8toCS0(name, &unifilename, UDF_NAME_LEN)) )
+-			{
+-				*err = -ENAMETOOLONG;
+-				return NULL;
+-			}
+-		}
+-		else if (UDF_QUERY_FLAG(sb, UDF_FLAG_NLS_MAP))
+-		{
+-			if ( !(namelen = udf_NLStoCS0(UDF_SB(sb)->s_nls_map, name, &unifilename, UDF_NAME_LEN)) )
+-			{
+-				*err = -ENAMETOOLONG;
+-				return NULL;
+-			}
+-		}
+-		else
+-			return NULL;
+ 	}
+ 	else
+ 		namelen = 0;
+@@ -388,7 +387,9 @@
+ 	f_pos = (udf_ext0_offset(dir) >> 2);
+ 
+ 	fibh->soffset = fibh->eoffset = (f_pos & ((dir->i_sb->s_blocksize - 1) >> 2)) << 2;
+-	if (inode_bmap(dir, f_pos >> (dir->i_sb->s_blocksize_bits - 2),
++	if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB)
++		fibh->sbh = fibh->ebh = NULL;
++	else if (inode_bmap(dir, f_pos >> (dir->i_sb->s_blocksize_bits - 2),
+ 		&bloc, &extoffset, &eloc, &elen, &offset, &bh) == (EXT_RECORDED_ALLOCATED >> 30))
+ 	{
+ 		offset >>= dir->i_sb->s_blocksize_bits;
+@@ -409,94 +410,89 @@
+ 			*err = -EIO;
+ 			return NULL;
+ 		}
+-	
++
+ 		block = UDF_I_LOCATION(dir).logicalBlockNum;
+-	
+-		while ( (f_pos < size) )
++
++	}
++	else
++	{
++		block = udf_get_lb_pblock(dir->i_sb, UDF_I_LOCATION(dir), 0);
++		fibh->sbh = fibh->ebh = NULL;
++		fibh->soffset = fibh->eoffset = sb->s_blocksize;
++		goto add;
++	}
++
++	while ( (f_pos < size) )
++	{
++		fi = udf_fileident_read(dir, &f_pos, fibh, cfi, &bloc, &extoffset, &eloc, &elen, &offset, &bh);
++
++		if (!fi)
+ 		{
+-			fi = udf_fileident_read(dir, &f_pos, fibh, cfi, &bloc, &extoffset, &eloc, &elen, &offset, &bh);
+-	
+-			if (!fi)
+-			{
+-				if (fibh->sbh != fibh->ebh)
+-					udf_release_data(fibh->ebh);
+-				udf_release_data(fibh->sbh);
+-				udf_release_data(bh);
+-				*err = -EIO;
+-				return NULL;
+-			}
+-	
+-			liu = le16_to_cpu(cfi->lengthOfImpUse);
+-			lfi = cfi->lengthFileIdent;
+-	
+-			if (fibh->sbh == fibh->ebh)
+-				nameptr = fi->fileIdent + liu;
++			if (fibh->sbh != fibh->ebh)
++				udf_release_data(fibh->ebh);
++			udf_release_data(fibh->sbh);
++			udf_release_data(bh);
++			*err = -EIO;
++			return NULL;
++		}
++
++		liu = le16_to_cpu(cfi->lengthOfImpUse);
++		lfi = cfi->lengthFileIdent;
++
++		if (fibh->sbh == fibh->ebh)
++			nameptr = fi->fileIdent + liu;
++		else
++		{
++			int poffset;	/* Unpaded ending offset */
++
++			poffset = fibh->soffset + sizeof(struct fileIdentDesc) + liu + lfi;
++
++			if (poffset >= lfi)
++				nameptr = (char *)(fibh->ebh->b_data + poffset - lfi);
+ 			else
+ 			{
+-				int poffset;	/* Unpaded ending offset */
+-	
+-				poffset = fibh->soffset + sizeof(struct fileIdentDesc) + liu + lfi;
+-	
+-				if (poffset >= lfi)
+-					nameptr = (char *)(fibh->ebh->b_data + poffset - lfi);
+-				else
+-				{
+-					nameptr = fname;
+-					memcpy(nameptr, fi->fileIdent + liu, lfi - poffset);
+-					memcpy(nameptr + lfi - poffset, fibh->ebh->b_data, poffset);
+-				}
++				nameptr = fname;
++				memcpy(nameptr, fi->fileIdent + liu, lfi - poffset);
++				memcpy(nameptr + lfi - poffset, fibh->ebh->b_data, poffset);
+ 			}
+-	
+-			if ( (cfi->fileCharacteristics & FID_FILE_CHAR_DELETED) != 0 )
++		}
++
++		if ( (cfi->fileCharacteristics & FID_FILE_CHAR_DELETED) != 0 )
++		{
++			if (((sizeof(struct fileIdentDesc) + liu + lfi + 3) & ~3) == nfidlen)
+ 			{
+-				if (((sizeof(struct fileIdentDesc) + liu + lfi + 3) & ~3) == nfidlen)
++				udf_release_data(bh);
++				cfi->descTag.tagSerialNum = cpu_to_le16(1);
++				cfi->fileVersionNum = cpu_to_le16(1);
++				cfi->fileCharacteristics = 0;
++				cfi->lengthFileIdent = namelen;
++				cfi->lengthOfImpUse = cpu_to_le16(0);
++				if (!udf_write_fi(dir, cfi, fi, fibh, NULL, name))
++					return fi;
++				else
+ 				{
+-					udf_release_data(bh);
+-					cfi->descTag.tagSerialNum = cpu_to_le16(1);
+-					cfi->fileVersionNum = cpu_to_le16(1);
+-					cfi->fileCharacteristics = 0;
+-					cfi->lengthFileIdent = namelen;
+-					cfi->lengthOfImpUse = cpu_to_le16(0);
+-					if (!udf_write_fi(dir, cfi, fi, fibh, NULL, name))
+-						return fi;
+-					else
+-					{
+-						*err = -EIO;
+-						return NULL;
+-					}
++					*err = -EIO;
++					return NULL;
+ 				}
+ 			}
++		}
+ 
+-			if (!lfi || !dentry)
+-				continue;
++		if (!lfi || !dentry)
++			continue;
+ 
+-			if ((flen = udf_get_filename(dir->i_sb, nameptr, fname, lfi)) &&
+-				udf_match(flen, fname, &(dentry->d_name)))
+-			{
+-				if (fibh->sbh != fibh->ebh)
+-					udf_release_data(fibh->ebh);
+-				udf_release_data(fibh->sbh);
+-				udf_release_data(bh);
+-				*err = -EEXIST;
+-				return NULL;
+-			}
+-		}
+-	}
+-	else
+-	{
+-		block = udf_get_lb_pblock(dir->i_sb, UDF_I_LOCATION(dir), 0);
+-		if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB)
++		if ((flen = udf_get_filename(dir->i_sb, nameptr, fname, lfi)) &&
++			udf_match(flen, fname, dentry->d_name.len, dentry->d_name.name))
+ 		{
+-			fibh->sbh = fibh->ebh = udf_tread(dir->i_sb, block);
+-			fibh->soffset = fibh->eoffset = udf_file_entry_alloc_offset(dir);
+-		}
+-		else
+-		{
+-			fibh->sbh = fibh->ebh = NULL;
+-			fibh->soffset = fibh->eoffset = sb->s_blocksize;
++			if (fibh->sbh != fibh->ebh)
++				udf_release_data(fibh->ebh);
++			udf_release_data(fibh->sbh);
++			udf_release_data(bh);
++			*err = -EEXIST;
++			return NULL;
+ 		}
+ 	}
+ 
++add:
+ 	f_pos += nfidlen;
+ 
+ 	if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB &&
+@@ -533,13 +529,17 @@
+ 			fibh->sbh = fibh->ebh;
+ 		}
+ 
+-		if (UDF_I_ALLOCTYPE(dir) != ICBTAG_FLAG_AD_IN_ICB)
++		if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB)
++		{
++			block = UDF_I_LOCATION(dir).logicalBlockNum;
++			fi = (struct fileIdentDesc *)(UDF_I_DATA(dir) + fibh->soffset - udf_ext0_offset(dir) + UDF_I_LENEATTR(dir));
++		}
++		else
++		{
+ 			block = eloc.logicalBlockNum + ((elen - 1) >>
+ 				dir->i_sb->s_blocksize_bits);
+-		else
+-			block = UDF_I_LOCATION(dir).logicalBlockNum;
+-				
+-		fi = (struct fileIdentDesc *)(fibh->sbh->b_data + fibh->soffset);
++			fi = (struct fileIdentDesc *)(fibh->sbh->b_data + fibh->soffset);
++		}
+ 	}
+ 	else
+ 	{
+@@ -628,9 +628,13 @@
+ 	struct fileIdentDesc cfi, *fi;
+ 	int err;
+ 
++	lock_kernel();
+ 	inode = udf_new_inode(dir, mode, &err);
+ 	if (!inode)
++	{
++		unlock_kernel();
+ 		return err;
++	}
+ 
+ 	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
+ 		inode->i_data.a_ops = &udf_adinicb_aops;
+@@ -646,6 +650,7 @@
+ 		inode->i_nlink --;
+ 		mark_inode_dirty(inode);
+ 		iput(inode);
++		unlock_kernel();
+ 		return err;
+ 	}
+ 	cfi.icb.extLength = cpu_to_le32(inode->i_sb->s_blocksize);
+@@ -661,6 +666,7 @@
+ 	if (fibh.sbh != fibh.ebh)
+ 		udf_release_data(fibh.ebh);
+ 	udf_release_data(fibh.sbh);
++	unlock_kernel();
+ 	d_instantiate(dentry, inode);
+ 	return 0;
+ }
+@@ -669,8 +675,10 @@
+ {
+ 	struct inode * inode;
+ 	struct udf_fileident_bh fibh;
+-	int err;
+ 	struct fileIdentDesc cfi, *fi;
++	int err;
++ 
++	lock_kernel();
+ 
+ 	err = -EIO;
+ 	inode = udf_new_inode(dir, mode, &err);
+@@ -684,6 +692,7 @@
+ 		inode->i_nlink --;
+ 		mark_inode_dirty(inode);
+ 		iput(inode);
++		unlock_kernel();
+ 		return err;
+ 	}
+ 	cfi.icb.extLength = cpu_to_le32(inode->i_sb->s_blocksize);
+@@ -704,6 +713,7 @@
+ 	d_instantiate(dentry, inode);
+ 	err = 0;
+ out:
++	unlock_kernel();
+ 	return err;
+ }
+ 
+@@ -711,8 +721,10 @@
+ {
+ 	struct inode * inode;
+ 	struct udf_fileident_bh fibh;
+-	int err;
+ 	struct fileIdentDesc cfi, *fi;
++	int err;
++ 
++	lock_kernel();
+ 
+ 	err = -EMLINK;
+ 	if (dir->i_nlink >= (256<<sizeof(dir->i_nlink))-1)
+@@ -767,6 +779,7 @@
+ 	udf_release_data(fibh.sbh);
+ 	err = 0;
+ out:
++	unlock_kernel();
+ 	return err;
+ }
+ 
+@@ -784,7 +797,10 @@
+ 	f_pos = (udf_ext0_offset(dir) >> 2);
+ 
+ 	fibh.soffset = fibh.eoffset = (f_pos & ((dir->i_sb->s_blocksize - 1) >> 2)) << 2;
+-	if (inode_bmap(dir, f_pos >> (dir->i_sb->s_blocksize_bits - 2),
++
++	if (UDF_I_ALLOCTYPE(dir) == ICBTAG_FLAG_AD_IN_ICB)
++		fibh.sbh = fibh.ebh = NULL;
++	else if (inode_bmap(dir, f_pos >> (dir->i_sb->s_blocksize_bits - 2),
+ 		&bloc, &extoffset, &eloc, &elen, &offset, &bh) == (EXT_RECORDED_ALLOCATED >> 30))
+ 	{
+ 		offset >>= dir->i_sb->s_blocksize_bits;
+@@ -798,6 +814,12 @@
+ 		}
+ 		else
+ 			offset = 0;
++
++		if (!(fibh.sbh = fibh.ebh = udf_tread(dir->i_sb, block)))
++		{
++			udf_release_data(bh);
++			return 0;
++		}
+ 	}
+ 	else
+ 	{
+@@ -805,8 +827,6 @@
+ 		return 0;
+ 	}
+ 
+-	if (!(fibh.sbh = fibh.ebh = udf_tread(dir->i_sb, block)))
+-		return 0;
+ 
+ 	while ( (f_pos < size) )
+ 	{
+@@ -823,6 +843,9 @@
+ 
+ 		if (cfi.lengthFileIdent && (cfi.fileCharacteristics & FID_FILE_CHAR_DELETED) == 0)
+ 		{
++			if (fibh.sbh != fibh.ebh)
++				udf_release_data(fibh.ebh);
++			udf_release_data(fibh.sbh);
+ 			udf_release_data(bh);
+ 			return 0;
+ 		}
+@@ -840,14 +863,17 @@
+ 	struct inode * inode = dentry->d_inode;
+ 	struct udf_fileident_bh fibh;
+ 	struct fileIdentDesc *fi, cfi;
+-
+-	retval = -ENOENT;
++	lb_addr tloc;
++ 
++ 	retval = -ENOENT;
++	lock_kernel();
+ 	fi = udf_find_entry(dir, dentry, &fibh, &cfi);
+ 	if (!fi)
+ 		goto out;
+ 
+ 	retval = -EIO;
+-	if (udf_get_lb_pblock(dir->i_sb, lelb_to_cpu(cfi.icb.extLocation), 0) != inode->i_ino)
++	tloc = lelb_to_cpu(cfi.icb.extLocation);
++	if (udf_get_lb_pblock(dir->i_sb, tloc, 0) != inode->i_ino)
+ 		goto end_rmdir;
+ 	retval = -ENOTEMPTY;
+ 	if (!empty_dir(inode))
+@@ -874,6 +900,7 @@
+ 		udf_release_data(fibh.ebh);
+ 	udf_release_data(fibh.sbh);
+ out:
++	unlock_kernel();
+ 	return retval;
+ }
+ 
+@@ -884,19 +911,19 @@
+ 	struct udf_fileident_bh fibh;
+ 	struct fileIdentDesc *fi;
+ 	struct fileIdentDesc cfi;
+-
+-	retval = -ENOENT;
++	lb_addr tloc;
++ 
++ 	retval = -ENOENT;
++	lock_kernel();
+ 	fi = udf_find_entry(dir, dentry, &fibh, &cfi);
+ 	if (!fi)
+ 		goto out;
+ 
+ 	retval = -EIO;
+ 
+-	if (udf_get_lb_pblock(dir->i_sb, lelb_to_cpu(cfi.icb.extLocation), 0) !=
+-		inode->i_ino)
+-	{
++	tloc = lelb_to_cpu(cfi.icb.extLocation);
++	if (udf_get_lb_pblock(dir->i_sb, tloc, 0) != inode->i_ino)
+ 		goto end_unlink;
+-	}
+ 
+ 	if (!inode->i_nlink)
+ 	{
+@@ -920,6 +947,7 @@
+ 		udf_release_data(fibh.ebh);
+ 	udf_release_data(fibh.sbh);
+ out:
++	unlock_kernel();
+ 	return retval;
+ }
+ 
+@@ -936,7 +964,10 @@
+ 	char *ea;
+ 	int err;
+ 	int block;
++	char name[UDF_NAME_LEN];
++	int namelen;
+ 
++	lock_kernel();
+ 	if (!(inode = udf_new_inode(dir, S_IFLNK, &err)))
+ 		goto out;
+ 
+@@ -964,6 +995,9 @@
+ 		udf_add_aext(inode, &bloc, &extoffset, eloc, elen, &bh, 0);
+ 		udf_release_data(bh);
+ 
++#ifdef OLD_QUOTA
++		inode->i_blocks = inode->i_sb->s_blocksize / 512;
++#endif
+ 		block = udf_get_pblock(inode->i_sb, block,
+ 			UDF_I_LOCATION(inode).partitionReferenceNum, 0);
+ 		bh = udf_tread(inode->i_sb, block);
+@@ -972,13 +1006,10 @@
+ 		mark_buffer_uptodate(bh, 1);
+ 		unlock_buffer(bh);
+ 		mark_buffer_dirty_inode(bh, inode);
++		ea = bh->b_data + udf_ext0_offset(inode);
+ 	}
+ 	else
+-	{
+-		block = udf_get_lb_pblock(inode->i_sb, UDF_I_LOCATION(inode), 0);
+-		bh = udf_tread(inode->i_sb, block);
+-	}
+-	ea = bh->b_data + udf_ext0_offset(inode);
++		ea = UDF_I_DATA(inode) + UDF_I_LENEATTR(inode);
+ 
+ 	eoffset = inode->i_sb->s_blocksize - udf_ext0_offset(inode);
+ 	pc = (struct pathComponent *)ea;
+@@ -1016,22 +1047,25 @@
+ 		pc->componentType = 5;
+ 		pc->lengthComponentIdent = 0;
+ 		pc->componentFileVersionNum = 0;
+-		if (pc->componentIdent[0] == '.')
++		if (compstart[0] == '.')
+ 		{
+-			if (pc->lengthComponentIdent == 1)
++			if ((symname-compstart) == 1)
+ 				pc->componentType = 4;
+-			else if (pc->lengthComponentIdent == 2 && pc->componentIdent[1] == '.')
++			else if ((symname-compstart) == 2 && compstart[1] == '.')
+ 				pc->componentType = 3;
+ 		}
+ 
+ 		if (pc->componentType == 5)
+ 		{
+-			if (elen + sizeof(struct pathComponent) + symname - compstart > eoffset)
++			if ( !(namelen = udf_put_filename(inode->i_sb, compstart, name, symname-compstart)))
++				goto out_no_entry;
++
++			if (elen + sizeof(struct pathComponent) + namelen > eoffset)
+ 				goto out_no_entry;
+ 			else
+-				pc->lengthComponentIdent = symname - compstart;
++				pc->lengthComponentIdent = namelen;
+ 
+-			memcpy(pc->componentIdent, compstart, pc->lengthComponentIdent);
++			memcpy(pc->componentIdent, name, namelen);
+ 		}
+ 
+ 		elen += sizeof(struct pathComponent) + pc->lengthComponentIdent;
+@@ -1081,6 +1115,7 @@
+ 	err = 0;
+ 
+ out:
++	unlock_kernel();
+ 	return err;
+ 
+ out_no_entry:
+@@ -1095,17 +1130,21 @@
+ {
+ 	struct inode *inode = old_dentry->d_inode;
+ 	struct udf_fileident_bh fibh;
+-	int err;
+ 	struct fileIdentDesc cfi, *fi;
++	int err;
+ 
+-	if (S_ISDIR(inode->i_mode))
+-		return -EPERM;
+-
++	lock_kernel();
+ 	if (inode->i_nlink >= (256<<sizeof(inode->i_nlink))-1)
++	{
++		unlock_kernel();
+ 		return -EMLINK;
++	}
+ 
+ 	if (!(fi = udf_add_entry(dir, dentry, &fibh, &cfi, &err)))
++	{
++		unlock_kernel();
+ 		return err;
++	}
+ 	cfi.icb.extLength = cpu_to_le32(inode->i_sb->s_blocksize);
+ 	cfi.icb.extLocation = cpu_to_lelb(UDF_I_LOCATION(inode));
+ 	if (UDF_SB_LVIDBH(inode->i_sb))
+@@ -1136,6 +1175,7 @@
+ 	mark_inode_dirty(inode);
+ 	atomic_inc(&inode->i_count);
+ 	d_instantiate(dentry, inode);
++	unlock_kernel();
+ 	return 0;
+ }
+ 
+@@ -1151,18 +1191,19 @@
+ 	struct fileIdentDesc *ofi = NULL, *nfi = NULL, *dir_fi = NULL, ocfi, ncfi;
+ 	struct buffer_head *dir_bh = NULL;
+ 	int retval = -ENOENT;
+-
++	lb_addr tloc;
++ 
++	lock_kernel();
+ 	if ((ofi = udf_find_entry(old_dir, old_dentry, &ofibh, &ocfi)))
+ 	{
+ 		if (ofibh.sbh != ofibh.ebh)
+ 			udf_release_data(ofibh.ebh);
+ 		udf_release_data(ofibh.sbh);
+ 	}
+-	if (!ofi || udf_get_lb_pblock(old_dir->i_sb, lelb_to_cpu(ocfi.icb.extLocation), 0) !=
+-		old_inode->i_ino)
+-	{
++	tloc = lelb_to_cpu(ocfi.icb.extLocation);
++	if (!ofi || udf_get_lb_pblock(old_dir->i_sb, tloc, 0)
++					!= old_inode->i_ino)
+ 		goto end_rename;
+-	}
+ 
+ 	nfi = udf_find_entry(new_dir, new_dentry, &nfibh, &ncfi);
+ 	if (nfi)
+@@ -1186,18 +1227,29 @@
+ 				goto end_rename;
+ 		}
+ 		retval = -EIO;
+-		dir_bh = udf_bread(old_inode, 0, 0, &retval);
+-		if (!dir_bh)
+-			goto end_rename;
+-		dir_fi = udf_get_fileident(dir_bh->b_data, old_inode->i_sb->s_blocksize, &offset);
++		if (UDF_I_ALLOCTYPE(old_inode) == ICBTAG_FLAG_AD_IN_ICB)
++		{
++			dir_fi = udf_get_fileident(UDF_I_DATA(old_inode) -
++				(UDF_I_EFE(old_inode) ?
++					sizeof(struct extendedFileEntry) :
++					sizeof(struct fileEntry)),
++				old_inode->i_sb->s_blocksize, &offset);
++		}
++		else
++		{
++			dir_bh = udf_bread(old_inode, 0, 0, &retval);
++			if (!dir_bh)
++				goto end_rename;
++			dir_fi = udf_get_fileident(dir_bh->b_data, old_inode->i_sb->s_blocksize, &offset);
++		}
+ 		if (!dir_fi)
+ 			goto end_rename;
+-		if (udf_get_lb_pblock(old_inode->i_sb, cpu_to_lelb(dir_fi->icb.extLocation), 0) !=
+-			old_dir->i_ino)
+-		{
++		tloc = cpu_to_lelb(dir_fi->icb.extLocation);
++		if (udf_get_lb_pblock(old_inode->i_sb, tloc, 0)
++					!= old_dir->i_ino)
+ 			goto end_rename;
+-		}
+ 		retval = -EMLINK;
++
+ 		if (!new_inode && new_dir->i_nlink >= (256<<sizeof(new_dir->i_nlink))-1)
+ 			goto end_rename;
+ 	}
+@@ -1241,7 +1293,7 @@
+ 	UDF_I_UCTIME(old_dir) = UDF_I_UMTIME(old_dir) = CURRENT_UTIME;
+ 	mark_inode_dirty(old_dir);
+ 
+-	if (dir_bh)
++	if (dir_fi)
+ 	{
+ 		dir_fi->icb.extLocation = lelb_to_cpu(UDF_I_LOCATION(new_dir));
+ 		udf_update_tag((char *)dir_fi, (sizeof(struct fileIdentDesc) +
+@@ -1284,17 +1336,18 @@
+ 			udf_release_data(nfibh.ebh);
+ 		udf_release_data(nfibh.sbh);
+ 	}
++	unlock_kernel();
+ 	return retval;
+ }
+ 
+ struct inode_operations udf_dir_inode_operations = {
+-	lookup:				udf_lookup,
+-	create:				udf_create,
+-	link:				udf_link,
+-	unlink:				udf_unlink,
+-	symlink:			udf_symlink,
+-	mkdir:				udf_mkdir,
+-	rmdir:				udf_rmdir,
+-	mknod:				udf_mknod,
+-	rename:				udf_rename,
++	.lookup				= udf_lookup,
++	.create				= udf_create,
++	.link				= udf_link,
++	.unlink				= udf_unlink,
++	.symlink			= udf_symlink,
++	.mkdir				= udf_mkdir,
++	.rmdir				= udf_rmdir,
++	.mknod				= udf_mknod,
++	.rename				= udf_rename,
+ };
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/osta_udf.h linuxmips-2.4.30/fs/udf/osta_udf.h
+--- linuxmips-2.4.30.ref/fs/udf/osta_udf.h	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/osta_udf.h	2007-05-10 10:49:29.000000000 -0700
+@@ -1,10 +1,10 @@
+ /*
+  * osta_udf.h
+  *
+- * This file is based on OSTA UDF(tm) 2.01 (March 15, 2000)
++ * This file is based on OSTA UDF(tm) 2.50 (April 30, 2003)
+  * http://www.osta.org
+  *
+- * Copyright (c) 2001-2002  Ben Fennema <bfennema@falcon.csc.calpoly.edu>
++ * Copyright (c) 2001-2004  Ben Fennema <bfennema@falcon.csc.calpoly.edu>
+  * All rights reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -37,12 +37,12 @@
+ #ifndef _OSTA_UDF_H
+ #define _OSTA_UDF_H 1
+ 
+-/* OSTA CS0 Charspec (UDF 2.01 2.1.2) */
++/* OSTA CS0 Charspec (UDF 2.50 2.1.2) */
+ #define UDF_CHAR_SET_TYPE		0
+ #define UDF_CHAR_SET_INFO		"OSTA Compressed Unicode"
+ 
+-/* Entity Identifier (UDF 2.01 2.1.5) */
+-/* Identifiers (UDF 2.01 2.1.5.2) */
++/* Entity Identifier (UDF 2.50 2.1.5) */
++/* Identifiers (UDF 2.50 2.1.5.2) */
+ #define UDF_ID_DEVELOPER		"*Linux UDFFS"
+ #define	UDF_ID_COMPLIANT		"*OSTA UDF Compliant"
+ #define UDF_ID_LV_INFO			"*UDF LV Info"
+@@ -59,8 +59,9 @@
+ #define UDF_ID_SPARABLE			"*UDF Sparable Partition"
+ #define UDF_ID_ALLOC			"*UDF Virtual Alloc Tbl"
+ #define UDF_ID_SPARING			"*UDF Sparing Table"
++#define UDF_ID_METADATA			"*UDF Metadata Partition"
+ 
+-/* Identifier Suffix (UDF 2.01 2.1.5.3) */
++/* Identifier Suffix (UDF 2.50 2.1.5.3) */
+ #define IS_DF_HARD_WRITE_PROTECT	0x01
+ #define IS_DF_SOFT_WRITE_PROTECT	0x02
+ 
+@@ -83,9 +84,9 @@
+ {
+ 	uint8_t		impUse[8];
+ } __attribute__ ((packed));
+- 
+-/* Logical Volume Integrity Descriptor (UDF 2.01 2.2.6) */
+-/* Implementation Use (UDF 2.01 2.2.6.4) */
++
++/* Logical Volume Integrity Descriptor (UDF 2.50 2.2.6) */
++/* Implementation Use (UDF 2.50 2.2.6.4) */
+ struct logicalVolIntegrityDescImpUse
+ {
+ 	regid		impIdent;
+@@ -97,8 +98,8 @@
+ 	uint8_t		impUse[0];
+ } __attribute__ ((packed));
+ 
+-/* Implementation Use Volume Descriptor (UDF 2.01 2.2.7) */
+-/* Implementation Use (UDF 2.01 2.2.7.2) */
++/* Implementation Use Volume Descriptor (UDF 2.50 2.2.7) */
++/* Implementation Use (UDF 2.50 2.2.7.2) */
+ struct impUseVolDescImpUse
+ {
+ 	charspec	LVICharset;
+@@ -120,7 +121,7 @@
+ 	uint16_t	partitionNum;
+ } __attribute__ ((packed));
+ 
+-/* Virtual Partition Map (UDF 2.01 2.2.8) */
++/* Virtual Partition Map (UDF 2.50 2.2.8) */
+ struct virtualPartitionMap
+ {
+ 	uint8_t		partitionMapType;
+@@ -132,7 +133,7 @@
+ 	uint8_t		reserved2[24];
+ } __attribute__ ((packed));
+ 
+-/* Sparable Partition Map (UDF 2.01 2.2.9) */
++/* Sparable Partition Map (UDF 2.50 2.2.9) */
+ struct sparablePartitionMap
+ {
+ 	uint8_t		partitionMapType;
+@@ -148,25 +149,43 @@
+ 	uint32_t	locSparingTable[4];
+ } __attribute__ ((packed));
+ 
++/* Metadata Partition Map (UDF 2.50 2.2.10) */
++struct metadataPartitionMap
++{
++	uint8_t		partitionMapType;
++	uint8_t		partitionMapLength;
++	uint8_t		reserved1[2];
++	regid		partIdent;
++	uint16_t	volSeqNum;
++	uint16_t	partitionNum;
++	uint32_t	metadataFileLoc;
++	uint32_t	metadataMirrorFileLoc;
++	uint32_t	metadataBitmapFileLoc;
++	uint32_t	allocUnitSize;
++	uint16_t	alignUnitSize;
++	uint8_t		flags;
++	uint8_t		reserved2[5];
++} __attribute__ ((packed));
++
+ /* Virtual Allocation Table (UDF 1.5 2.2.10) */
+ struct virtualAllocationTable15
+ {
+ 	uint32_t	VirtualSector[0];
+-	regid		ident;
+-	uint32_t	previousVATICB;
++	regid		vatIdent;
++	uint32_t	previousVATICBLoc;
+ } __attribute__ ((packed));  
+ 
+ #define ICBTAG_FILE_TYPE_VAT15		0x00U
+ 
+-/* Virtual Allocation Table (UDF 2.01 2.2.10) */
++/* Virtual Allocation Table (UDF 2.50 2.2.11) */
+ struct virtualAllocationTable20
+ {
+ 	uint16_t	lengthHeader;
+ 	uint16_t	lengthImpUse;
+ 	dstring		logicalVolIdent[128];
+-	uint32_t	previousVatICBLoc;
+-	uint32_t	numFIDSFiles;
+-	uint32_t	numFIDSDirectories;
++	uint32_t	previousVATICBLoc;
++	uint32_t	numFiles;
++	uint32_t	numDirs;
+ 	uint16_t	minReadRevision;
+ 	uint16_t	minWriteRevision;
+ 	uint16_t	maxWriteRevision;
+@@ -177,7 +196,7 @@
+ 
+ #define ICBTAG_FILE_TYPE_VAT20		0xF8U
+ 
+-/* Sparing Table (UDF 2.01 2.2.11) */
++/* Sparing Table (UDF 2.50 2.2.12) */
+ struct sparingEntry
+ {
+ 	uint32_t	origLocation;
+@@ -195,7 +214,12 @@
+ 			mapEntry[0];
+ } __attribute__ ((packed));
+ 
+-/* struct long_ad ICB - ADImpUse (UDF 2.01 2.2.4.3) */
++/* Metadata File (and Metadata Mirror File) (UDF 2.50 2.2.13.1) */
++#define ICBTAG_FILE_TYPE_MAIN		0xFA
++#define ICBTAG_FILE_TYPE_MIRROR		0xFB
++#define ICBTAG_FILE_TYPE_BITMAP		0xFC
++
++/* struct long_ad ICB - ADImpUse (UDF 2.50 2.2.4.3) */
+ struct allocDescImpUse
+ {
+ 	uint16_t	flags;
+@@ -204,18 +228,18 @@
+ 
+ #define AD_IU_EXT_ERASED		0x0001
+ 
+-/* Real-Time Files (UDF 2.01 6.11) */
++/* Real-Time Files (UDF 2.50 6.11) */
+ #define ICBTAG_FILE_TYPE_REALTIME	0xF9U
+ 
+-/* Implementation Use Extended Attribute (UDF 2.01 3.3.4.5) */
+-/* FreeEASpace (UDF 2.01 3.3.4.5.1.1) */
++/* Implementation Use Extended Attribute (UDF 2.50 3.3.4.5) */
++/* FreeEASpace (UDF 2.50 3.3.4.5.1.1) */
+ struct freeEaSpace
+ {
+ 	uint16_t	headerChecksum;
+ 	uint8_t		freeEASpace[0];
+ } __attribute__ ((packed));
+ 
+-/* DVD Copyright Management Information (UDF 2.01 3.3.4.5.1.2) */
++/* DVD Copyright Management Information (UDF 2.50 3.3.4.5.1.2) */
+ struct DVDCopyrightImpUse 
+ {
+ 	uint16_t	headerChecksum;
+@@ -224,21 +248,21 @@
+ 	uint8_t		protectionSystemInfo[4];
+ } __attribute__ ((packed));
+ 
+-/* Application Use Extended Attribute (UDF 2.01 3.3.4.6) */
+-/* FreeAppEASpace (UDF 2.01 3.3.4.6.1) */
++/* Application Use Extended Attribute (UDF 2.50 3.3.4.6) */
++/* FreeAppEASpace (UDF 2.50 3.3.4.6.1) */
+ struct freeAppEASpace
+ {
+ 	uint16_t	headerChecksum;
+ 	uint8_t		freeEASpace[0];
+ } __attribute__ ((packed));
+ 
+-/* UDF Defined System Stream (UDF 2.01 3.3.7) */
++/* UDF Defined System Stream (UDF 2.50 3.3.7) */
+ #define UDF_ID_UNIQUE_ID		"*UDF Unique ID Mapping Data"
+ #define UDF_ID_NON_ALLOC		"*UDF Non-Allocatable Space"
+ #define UDF_ID_POWER_CAL		"*UDF Power Cal Table"
+ #define UDF_ID_BACKUP			"*UDF Backup"
+ 
+-/* Operating System Identifiers (UDF 2.01 6.3) */
++/* Operating System Identifiers (UDF 2.50 6.3) */
+ #define UDF_OS_CLASS_UNDEF		0x00U
+ #define UDF_OS_CLASS_DOS		0x01U
+ #define UDF_OS_CLASS_OS2		0x02U
+@@ -254,6 +278,7 @@
+ #define UDF_OS_ID_DOS			0x00U
+ #define UDF_OS_ID_OS2			0x00U
+ #define UDF_OS_ID_MAC			0x00U
++#define UDF_OS_ID_MAX_OSX		0x01U
+ #define UDF_OS_ID_UNIX			0x00U
+ #define UDF_OS_ID_AIX			0x01U
+ #define UDF_OS_ID_SOLARIS		0x02U
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/partition.c linuxmips-2.4.30/fs/udf/partition.c
+--- linuxmips-2.4.30.ref/fs/udf/partition.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/partition.c	2007-05-10 10:49:29.000000000 -0700
+@@ -223,3 +223,147 @@
+ 
+ 	return 0;
+ }
++
++static uint32_t udf_get_addr_from_short_ad(struct super_block *sb, short_ad *p, int desc_count, int block)
++{
++	int i;
++	int crt_blocks=0;
++
++	if (p == NULL)
++		return 0xFFFFFFFF;
++	
++	for (i=0; i<desc_count; i++)
++	{
++		uint32_t extent_len;
++		int blocks_in_extent;
++
++		extent_len = le32_to_cpu(p[i].extLength);
++		/* keep least 30 sign bits (ecma 167 14.14.1.1) */
++		extent_len &= ((1<<30) - 1);
++	
++		blocks_in_extent = extent_len>>sb->s_blocksize_bits;
++		if ((crt_blocks + blocks_in_extent) > block)
++			break;
++		crt_blocks += blocks_in_extent;
++	}
++	/* not found */
++	if (i == desc_count)
++	{
++		udf_debug("block %d not found in allocation desc\n",block);
++		return 0xFFFFFFFF;
++	}
++	/* block offset in current extent */
++	block -= crt_blocks;
++	block = le32_to_cpu(p[i].extPosition) + block;
++	
++	return block;
++}
++
++static uint32_t udf_try_read_meta(struct super_block *sb, uint32_t block, uint16_t partition, uint32_t offset, struct inode* inode)
++{
++	uint32_t metad_blk;
++	uint32_t phy_blk;
++	struct buffer_head *bh = NULL;
++	
++	metad_blk = 0;
++	
++	switch(UDF_I_ALLOCTYPE(inode))
++	{
++		case ICBTAG_FLAG_AD_SHORT:
++		{
++			short_ad *sa;
++			int len;
++			udf_debug("ICB flag is ICBTAG_FLAG_AD_SHORT\n");
++			len = UDF_I_LENALLOC(inode)/sizeof(short_ad);
++			if (len == 0)
++			{
++				udf_error(sb, __FUNCTION__, "Inode has 0 alloc\n");
++				return 0xFFFFFFFF;
++			}
++			sa = (short_ad*)(UDF_I_DATA(inode) + UDF_I_LENEATTR(inode));
++			if (sa == NULL)
++			{
++				udf_error(sb, __FUNCTION__, "Inode has null alloc desc\n");
++				return 0xFFFFFFFF;
++			}
++				
++			metad_blk = udf_get_addr_from_short_ad(sb, sa, len, block);
++			break;
++		}
++		case ICBTAG_FLAG_AD_LONG:
++			udf_debug("ICB flag is ICBTAG_FLAG_AD_LONG\n");
++			return 0xFFFFFFFF;
++			break;
++		case ICBTAG_FLAG_AD_IN_ICB:
++			udf_debug("ICB flag is ICBTAG_FLAG_AD_IN_ICB\n");
++			break;
++		case ICBTAG_FLAG_AD_EXTENDED:
++			udf_debug("ICB flag is ICBTAG_FLAG_AD_EXTENDED !!!!!!!\n");
++			return 0xFFFFFFFF;
++			break;
++	}
++
++	/* map to sparable/physical partition via UDF_SB_PARTNUM(sb, partition) */ 
++	phy_blk = udf_get_pblock(sb, metad_blk, UDF_SB_PARTNUM(sb, partition), offset);
++
++	/* try to read from the physical location */
++	bh = udf_tread(sb, phy_blk);
++
++	if( bh )
++	{
++		udf_release_data(bh);
++		return phy_blk;
++	}
++	else
++	{
++		udf_debug("udf_try_read_meta FAILED\n");
++		return 0xFFFFFFFF;
++	}
++}
++
++uint32_t udf_get_pblock_meta25(struct super_block *sb, uint32_t block, uint16_t partition, uint32_t offset)
++{
++	uint32_t retblk;
++	struct inode *inode;
++
++	udf_debug("given partition %d\n", partition);
++	
++	inode = UDF_SB_TYPEMETA(sb,partition).s_metadata_fe;
++
++	if (inode)
++	{
++		retblk = udf_try_read_meta(sb, block, partition, offset, inode);
++
++		if(retblk == 0xFFFFFFFF)
++		{
++			udf_warning(sb, __FUNCTION__, "OOOOPS ... error reading from METADATA, trying to read from MIRROR");
++
++			inode = UDF_SB_TYPEMETA(sb,partition).s_mirror_fe;
++
++			if (inode == NULL)
++			{
++				udf_error(sb, __FUNCTION__, "mirror inode is null");
++				return 0xFFFFFFFF;
++			}
++
++			retblk = udf_try_read_meta(sb, block, partition, offset, inode);
++		}
++	}
++	else 	/* metadata inode is NULL */
++	{
++		udf_warning(sb, __FUNCTION__, "metadata inode is null. hmmm, will try reading from mirror file");
++
++		inode = UDF_SB_TYPEMETA(sb,partition).s_mirror_fe;
++
++		if (inode == NULL)
++		{
++			udf_error(sb, __FUNCTION__, "mirror inode null too??? bad, bad, bad! how did we get here???");
++			return 0xFFFFFFFF;
++		}
++
++		retblk = udf_try_read_meta(sb, block, partition, offset, inode);
++	}
++
++	return retblk;
++}
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/super.c linuxmips-2.4.30/fs/udf/super.c
+--- linuxmips-2.4.30.ref/fs/udf/super.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/super.c	2007-05-10 10:50:35.000000000 -0700
+@@ -26,7 +26,7 @@
+  *  Each contributing author retains all rights to their own work.
+  *
+  *  (C) 1998 Dave Boynton
+- *  (C) 1998-2001 Ben Fennema
++ *  (C) 1998-2004 Ben Fennema
+  *  (C) 2000 Stelias Computing Inc
+  *
+  * HISTORY
+@@ -55,6 +55,9 @@
+ #include <linux/stat.h>
+ #include <linux/cdrom.h>
+ #include <linux/nls.h>
++#include <linux/smp_lock.h>
++#include <linux/vfs.h>
++#include <linux/vmalloc.h>
+ #include <asm/byteorder.h>
+ 
+ #include <linux/udf_fs.h>
+@@ -100,14 +103,15 @@
+ 
+ /* Superblock operations */
+ static struct super_operations udf_sb_ops = {
+-	read_inode:		udf_read_inode,
+-	write_inode:		udf_write_inode,
+-	put_inode:		udf_put_inode,
+-	delete_inode:		udf_delete_inode,
+-	put_super:		udf_put_super,
+-	write_super:		udf_write_super,
+-	statfs:			udf_statfs,
+-	remount_fs:		udf_remount_fs,
++	.read_inode		= udf_read_inode,
++	.write_inode		= udf_write_inode,
++	.put_inode		= udf_put_inode,
++	.delete_inode		= udf_delete_inode,
++	.clear_inode		= udf_clear_inode,
++	.put_super		= udf_put_super,
++	.write_super		= udf_write_super,
++	.statfs			= udf_statfs,
++	.remount_fs		= udf_remount_fs,
+ };
+ 
+ struct udf_options
+@@ -130,8 +134,14 @@
+ 
+ static int __init init_udf_fs(void)
+ {
++	int err;
+ 	printk(KERN_NOTICE "udf: registering filesystem\n");
+-	return register_filesystem(&udf_fstype);
++	err = register_filesystem(&udf_fstype);
++	if (err)
++		goto out;
++	return 0;
++out:
++	return err;
+ }
+ 
+ static void __exit exit_udf_fs(void)
+@@ -140,8 +150,6 @@
+ 	unregister_filesystem(&udf_fstype);
+ }
+ 
+-EXPORT_NO_SYMBOLS;
+-
+ module_init(init_udf_fs)
+ module_exit(exit_udf_fs)
+ 
+@@ -157,7 +165,7 @@
+  *	gid=		Set the default group.
+  *	umask=		Set the default umask.
+  *	uid=		Set the default user.
+- *	bs=			Set the block size.
++ *	bs=		Set the block size.
+  *	unhide		Show otherwise hidden files.
+  *	undelete	Show deleted files in lists.
+  *	adinicb		Embed data in the inode (default)
+@@ -191,8 +199,8 @@
+  *	uopts		Pointer to mount options variable.
+  *
+  * POST-CONDITIONS
+- *	<return>	0	Mount options parsed okay.
+- *	<return>	-1	Error parsing mount options.
++ *	<return>	1	Mount options parsed okay.
++ *	<return>	0	Error parsing mount options.
+  *
+  * HISTORY
+  *	July 1, 1997 - Andrew E. Mileski
+@@ -290,9 +298,11 @@
+ void
+ udf_write_super(struct super_block *sb)
+ {
++	lock_kernel();
+ 	if (!(sb->s_flags & MS_RDONLY))
+ 		udf_open_lvid(sb);
+ 	sb->s_dirt = 0;
++	unlock_kernel();
+ }
+ 
+ static int
+@@ -313,9 +323,11 @@
+ 	UDF_SB(sb)->s_gid   = uopt.gid;
+ 	UDF_SB(sb)->s_umask = uopt.umask;
+ 
+-#if UDFFS_RW != 1
+-	*flags |= MS_RDONLY;
+-#endif
++	if (UDF_SB_LVIDBH(sb)) {
++		int write_rev = le16_to_cpu(UDF_SB_LVIDIU(sb)->minUDFWriteRev);
++		if (write_rev > UDF_MAX_WRITE_VERSION)
++			*flags |= MS_RDONLY;
++	}
+ 
+ 	if ((*flags & MS_RDONLY) == (sb->s_flags & MS_RDONLY))
+ 		return 0;
+@@ -357,33 +369,17 @@
+ static  int
+ udf_set_blocksize(struct super_block *sb, int bsize)
+ {
+-	/* Use specified block size if specified */
+-	if (bsize)
+-		sb->s_blocksize = bsize;
+-	if (get_hardsect_size(sb->s_dev) > sb->s_blocksize)
+-		sb->s_blocksize = get_hardsect_size(sb->s_dev); 
+-
+-	/* Block size must be an even multiple of 512 */
+-	switch (sb->s_blocksize)
+-	{
+-		case 512: sb->s_blocksize_bits = 9;	break;
+-		case 1024: sb->s_blocksize_bits = 10; break;
+-		case 2048: sb->s_blocksize_bits = 11; break;
+-		case 4096: sb->s_blocksize_bits = 12; break;
+-		case 8192: sb->s_blocksize_bits = 13; break;
+-		default:
+-		{
+-			udf_debug("Bad block size (%ld)\n", sb->s_blocksize);
+-			printk(KERN_ERR "udf: bad block size (%ld)\n", sb->s_blocksize);
+-			return 0;
+-		}
++	if (!sb_min_blocksize(sb, bsize)) {
++		udf_debug("Bad block size (%d)\n", bsize);
++		printk(KERN_ERR "udf: bad block size (%d)\n", bsize);
++		return 0;
+ 	}
+-
+-	/* Set the block size */
+-	set_blocksize(sb->s_dev, sb->s_blocksize);
+ 	return sb->s_blocksize;
+ }
+ 
++/* Only search for VRS within this range */
++#define VRS_SECTOR_LIMIT 0x8000
++
+ static int
+ udf_vrs(struct super_block *sb, int silent)
+ {
+@@ -394,6 +390,7 @@
+ 	int iso9660=0;
+ 	int nsr02=0;
+ 	int nsr03=0;
++	int i=0;
+ 
+ 	/* Block size must be a multiple of 512 */
+ 	if (sb->s_blocksize & 511)
+@@ -420,7 +417,7 @@
+ 		vsd = (struct volStructDesc *)(bh->b_data +
+ 			(sector & (sb->s_blocksize - 1)));
+ 
+-		if (vsd->stdIdent[0] == 0)
++		if ((vsd->stdIdent[0] == 0) || (i++ > VRS_SECTOR_LIMIT))
+ 		{
+ 			udf_release_data(bh);
+ 			break;
+@@ -504,15 +501,14 @@
+ 	uint16_t ident;
+ 	uint32_t location;
+ 	int i;
++	int varlastblock = udf_variable_to_fixed(lastblock);
++	int last[] =  { /* (UDF_SB_SESSION(sb) + 256), */ lastblock, lastblock - 1, lastblock + 1,
++					lastblock - 2, lastblock - 150, lastblock - 152,
++					varlastblock, varlastblock - 2,
++					varlastblock - 150, varlastblock - 152 };
+ 
+ 	if (lastblock)
+ 	{
+-		int varlastblock = udf_variable_to_fixed(lastblock);
+-		int last[] =  { lastblock, lastblock - 2,
+-				lastblock - 150, lastblock - 152,
+-				varlastblock, varlastblock - 2,
+-				varlastblock - 150, varlastblock - 152 };
+-
+ 		lastblock = 0;
+ 
+ 		/* Search for an anchor volume descriptor pointer */
+@@ -538,25 +534,40 @@
+ 	
+ 			if (ident == TAG_IDENT_AVDP)
+ 			{
+-				if (location == last[i] - UDF_SB_SESSION(sb))
++				if (location == last[i] /*- UDF_SB_SESSION(sb)*/)
+ 				{
+-					lastblock = UDF_SB_ANCHOR(sb)[0] = last[i];
+-					UDF_SB_ANCHOR(sb)[1] = last[i] - 256;
++					lastblock = UDF_SB_ANCHOR(sb)[0] = last[i] /*- UDF_SB_SESSION(sb)*/;
++					UDF_SB_ANCHOR(sb)[1] = last[i] - 256 /*- UDF_SB_SESSION(sb)*/;
+ 				}
+-				else if (location == udf_variable_to_fixed(last[i]) - UDF_SB_SESSION(sb))
++				else if (location == udf_variable_to_fixed(last[i]) /*- UDF_SB_SESSION(sb)*/)
+ 				{
+ 					UDF_SET_FLAG(sb, UDF_FLAG_VARCONV);
+-					lastblock = UDF_SB_ANCHOR(sb)[0] = udf_variable_to_fixed(last[i]);
+-					UDF_SB_ANCHOR(sb)[1] = lastblock - 256;
++					lastblock = UDF_SB_ANCHOR(sb)[0] = udf_variable_to_fixed(last[i]) /*- UDF_SB_SESSION(sb)*/;
++					UDF_SB_ANCHOR(sb)[1] = lastblock - 256 /*- UDF_SB_SESSION(sb)*/;
+ 				}
+ 				else
+ 					udf_debug("Anchor found at block %d, location mismatch %d.\n",
+ 						last[i], location);
+ 			}
+-			else if (ident == TAG_IDENT_FE || ident == TAG_IDENT_EFE)
++			else if (UDF_SB_SESSION(sb))		/* multisession */
+ 			{
+-				lastblock = last[i];
+-				UDF_SB_ANCHOR(sb)[3] = 512 + UDF_SB_SESSION(sb);
++				if (!(bh = sb_bread(sb, UDF_SB_SESSION(sb) + 256)))
++				{
++					ident = location = 0;
++				}
++				else
++				{
++					ident = le16_to_cpu(((tag *)bh->b_data)->tagIdent);
++					location = le32_to_cpu(((tag *)bh->b_data)->tagLocation);
++					udf_release_data(bh);
++				}
++
++				if (ident == TAG_IDENT_AVDP &&
++					location == UDF_SB_SESSION(sb) + 256)
++				{
++					lastblock = last[i];
++					UDF_SB_ANCHOR(sb)[1] = UDF_SB_SESSION(sb) + 256;
++				}
+ 			}
+ 			else
+ 			{
+@@ -572,14 +583,14 @@
+ 				}
+ 	
+ 				if (ident == TAG_IDENT_AVDP &&
+-					location == last[i] - 256 - UDF_SB_SESSION(sb))
++					location == last[i] - 256 /*- UDF_SB_SESSION(sb)*/)
+ 				{
+ 					lastblock = last[i];
+ 					UDF_SB_ANCHOR(sb)[1] = last[i] - 256;
+ 				}
+ 				else
+ 				{
+-					if (last[i] < 312 + UDF_SB_SESSION(sb) || !(bh = sb_bread(sb, last[i] - 312 - UDF_SB_SESSION(sb))))
++					if (last[i] < 312 + UDF_SB_SESSION(sb) || !(bh = sb_bread(sb, last[i] - 312 /*- UDF_SB_SESSION(sb)*/)))
+ 					{
+ 						ident = location = 0;
+ 					}
+@@ -604,7 +615,42 @@
+ 
+ 	if (!lastblock)
+ 	{
+-		/* We havn't found the lastblock. check 312 */
++		/* We haven't found the lastblock. Check for VAT presence and then at location 512 for AVDP */
++		for (i = 0; !lastblock && i < ARRAY_SIZE(last); i++) {
++			uint8_t fileType = 0xFF;
++
++			if (last[i] < 0 || !(bh = sb_bread(sb, last[i])))
++			{
++				ident = location = 0;
++			}
++			else
++			{
++				ident = le16_to_cpu(((tag *)bh->b_data)->tagIdent);
++				fileType = ((struct fileEntry *)bh->b_data)->icbTag.fileType;
++				udf_release_data(bh);
++			}
++
++			if ((ident == TAG_IDENT_FE || ident == TAG_IDENT_EFE) &&
++			    (fileType == ICBTAG_FILE_TYPE_VAT20 || fileType == ICBTAG_FILE_TYPE_VAT15))
++			{
++				lastblock = last[i];
++				/*
++					Check if there's a valid AVDP at sector 256.
++					If true, then ignore any AVDP at sector 512 (s. note from UDF 2.50 3/2.2.3)
++				*/
++				if ((bh = udf_read_tagged(sb, 256, 256, &ident)) &&
++					(ident == TAG_IDENT_AVDP))
++				{
++					udf_release_data(bh);
++				}
++				else
++				{
++					UDF_SB_ANCHOR(sb)[3] = 512;
++				}
++			}
++		}
++		
++		/* We haven't found the lastblock. check 312 */
+ 		if ((bh = sb_bread(sb, 312 + UDF_SB_SESSION(sb))))
+ 		{
+ 			ident = le16_to_cpu(((tag *)bh->b_data)->tagIdent);
+@@ -771,6 +817,94 @@
+ 	}
+ }
+ 
++static int
++udf_load_metadata_file_entries(struct super_block *sb, int part, lb_addr *fileset)
++{
++	lb_addr addr;
++	int fe_error = 0;
++
++	/* metadata address */
++	addr.logicalBlockNum = UDF_SB_TYPEMETA(sb, part).s_meta_file_loc;
++	addr.partitionReferenceNum = UDF_SB_PARTNUM(sb, part);
++	
++	UDF_SB_TYPEMETA(sb, part).s_metadata_fe = udf_iget(sb, addr);
++	
++	if (UDF_SB_TYPEMETA(sb,part).s_metadata_fe == NULL)
++	{
++		udf_warning(sb, __FUNCTION__, "metadata inode efe not found, will try mirror inode.");
++		fe_error = 1;
++		/*goto error_exit;*/
++	}
++
++	/* mirror file entry */
++	addr.logicalBlockNum = UDF_SB_TYPEMETA(sb, part).s_mirror_file_loc;
++	addr.partitionReferenceNum = UDF_SB_PARTNUM(sb, part);
++	
++	UDF_SB_TYPEMETA(sb, part).s_mirror_fe = udf_iget(sb, addr);
++	
++	if (UDF_SB_TYPEMETA(sb, part).s_mirror_fe == NULL)
++	{
++		if (fe_error)
++		{
++			udf_error(sb, __FUNCTION__, "mirror inode efe not found and metadata inode is missing too, exiting...");
++			goto error_exit;
++		}
++		else
++			udf_warning(sb, __FUNCTION__, "mirror inode efe not found but metadata inode is OK");
++	}
++
++	/* 
++	bitmap file entry
++	Note: Load only if bitmap file location differs from 0xFFFFFFFF (DCN-5102) 
++	*/
++	if (UDF_SB_TYPEMETA(sb, part).s_bitmap_file_loc != 0xFFFFFFFF)
++	{
++		addr.logicalBlockNum = UDF_SB_TYPEMETA(sb, part).s_bitmap_file_loc;
++		addr.partitionReferenceNum = UDF_SB_PARTNUM(sb, part);
++		
++		UDF_SB_TYPEMETA(sb, part).s_bitmap_fe = udf_iget(sb, addr);
++		
++		if (UDF_SB_TYPEMETA(sb,part).s_bitmap_fe == NULL)
++		{
++			if (sb->s_flags & MS_RDONLY)
++				udf_warning(sb, __FUNCTION__, "bitmap inode efe not found but it's ok since the disc is mounted read-only");
++			else
++			{
++				udf_error(sb, __FUNCTION__, "bitmap inode efe not found and attempted read-write mount");
++				goto error_exit;
++			}
++		}
++	}
++	return 0;
++
++error_exit:
++	return 1;
++}
++
++static void
++udf_release_metadata(struct super_block *sb)
++{
++	int i;
++	
++	for (i=0; i<UDF_SB_NUMPARTS(sb); i++)
++	{
++		if(UDF_SB_PARTTYPE(sb,i) == UDF_METADATA_MAP25)
++		{
++			if(UDF_SB_TYPEMETA(sb,i).s_metadata_fe)
++				iput(UDF_SB_TYPEMETA(sb,i).s_metadata_fe);
++			UDF_SB_TYPEMETA(sb,i).s_metadata_fe = NULL;
++
++			if(UDF_SB_TYPEMETA(sb,i).s_mirror_fe)
++				iput(UDF_SB_TYPEMETA(sb,i).s_mirror_fe);
++			UDF_SB_TYPEMETA(sb,i).s_mirror_fe = NULL;
++
++			if(UDF_SB_TYPEMETA(sb,i).s_bitmap_fe)
++				iput(UDF_SB_TYPEMETA(sb,i).s_bitmap_fe);
++			UDF_SB_TYPEMETA(sb,i).s_bitmap_fe = NULL;
++		}
++	}
++}
++
+ static void 
+ udf_load_fileset(struct super_block *sb, struct buffer_head *bh, lb_addr *root)
+ {
+@@ -790,6 +924,7 @@
+ udf_load_partdesc(struct super_block *sb, struct buffer_head *bh)
+ {
+ 	struct partitionDesc *p;
++	int matched_part_desc=0;
+ 	int i;
+ 
+ 	p = (struct partitionDesc *)bh->b_data;
+@@ -798,10 +933,24 @@
+ 	{
+ 		udf_debug("Searching map: (%d == %d)\n", 
+ 			UDF_SB_PARTMAPS(sb)[i].s_partition_num, le16_to_cpu(p->partitionNumber));
+-		if (UDF_SB_PARTMAPS(sb)[i].s_partition_num == le16_to_cpu(p->partitionNumber))
++
++		/* workaround problems caused by Vista */
++		if (UDF_SB_PARTMAPS(sb)[i].s_partition_num >= UDF_SB_NUMPARTS(sb)) {
++			udf_debug("Changing parition# from %d to ", UDF_SB_PARTMAPS(sb)[i].s_partition_num);
++			UDF_SB_PARTMAPS(sb)[i].s_partition_num %= (UDF_SB_NUMPARTS(sb)); 
++			udf_debug("%d\n", UDF_SB_PARTMAPS(sb)[i].s_partition_num);
++		} else {
++			udf_debug("Keeping partition# %d out of %d partitions\n", 
++					UDF_SB_PARTMAPS(sb)[i].s_partition_num, UDF_SB_NUMPARTS(sb));
++		}
++
++		if ((UDF_SB_PARTMAPS(sb)[i].s_partition_num == le16_to_cpu(p->partitionNumber)) || 
++		    ((UDF_SB_PARTMAPS(sb)[i].s_partition_num % UDF_SB_NUMPARTS(sb)) == (le16_to_cpu(p->partitionNumber) % UDF_SB_NUMPARTS(sb)))) 
+ 		{
++			matched_part_desc++;
++			udf_debug("Found desc for part %d id(%d)\n",i,UDF_SB_PARTMAPS(sb)[i].s_partition_num);
+ 			UDF_SB_PARTLEN(sb,i) = le32_to_cpu(p->partitionLength); /* blocks */
+-			UDF_SB_PARTROOT(sb,i) = le32_to_cpu(p->partitionStartingLocation) + UDF_SB_SESSION(sb);
++			UDF_SB_PARTROOT(sb,i) = le32_to_cpu(p->partitionStartingLocation);
+ 			if (le32_to_cpu(p->accessType) == PD_ACCESS_TYPE_READ_ONLY)
+ 				UDF_SB_PARTFLAGS(sb,i) |= UDF_PART_FLAG_READ_ONLY;
+ 			if (le32_to_cpu(p->accessType) == PD_ACCESS_TYPE_WRITE_ONCE)
+@@ -868,18 +1017,21 @@
+ 					}
+ 				}
+ 			}
+-			break;
+ 		}
+ 	}
+-	if (i == UDF_SB_NUMPARTS(sb))
++	
++	if (matched_part_desc == 0)
+ 	{
+ 		udf_debug("Partition (%d) not found in partition map\n", le16_to_cpu(p->partitionNumber));
+ 	}
+ 	else
+ 	{
+-		udf_debug("Partition (%d:%d type %x) starts at physical %d, block length %d\n",
+-			le16_to_cpu(p->partitionNumber), i, UDF_SB_PARTTYPE(sb,i),
+-			UDF_SB_PARTROOT(sb,i), UDF_SB_PARTLEN(sb,i));
++		for (i=0; i<UDF_SB_NUMPARTS(sb); i++)
++		{
++			udf_debug("Partition (%d:%d type %x) starts at physical %d, block length %d\n",
++					le16_to_cpu(p->partitionNumber), i, UDF_SB_PARTTYPE(sb,i),
++					UDF_SB_PARTROOT(sb,i), UDF_SB_PARTLEN(sb,i));
++		}
+ 	}
+ }
+ 
+@@ -906,6 +1058,7 @@
+ 			UDF_SB_PARTVSN(sb,i) = le16_to_cpu(gpm1->volSeqNum);
+ 			UDF_SB_PARTNUM(sb,i) = le16_to_cpu(gpm1->partitionNum);
+ 			UDF_SB_PARTFUNC(sb,i) = NULL;
++			udf_debug("Set i=%d PARTFUNC = NULL, PARTNUM = %x\n", i, UDF_SB_PARTNUM(sb,i));
+ 		}
+ 		else if (type == 2)
+ 		{
+@@ -916,12 +1069,18 @@
+ 				{
+ 					UDF_SB_PARTTYPE(sb,i) = UDF_VIRTUAL_MAP15;
+ 					UDF_SB_PARTFUNC(sb,i) = udf_get_pblock_virt15;
++					udf_debug("Set i=%d PARTFUNC = udf_get_pblock_virt15\n", i);
+ 				}
+-				else if (le16_to_cpu(((uint16_t *)upm2->partIdent.identSuffix)[0]) == 0x0200)
++				else if ((le16_to_cpu(((uint16_t *)upm2->partIdent.identSuffix)[0]) == 0x0200) ||
++						 (le16_to_cpu(((uint16_t *)upm2->partIdent.identSuffix)[0]) == 0x0250) ||
++						 (le16_to_cpu(((uint16_t *)upm2->partIdent.identSuffix)[0]) == 0x0260))
+ 				{
+ 					UDF_SB_PARTTYPE(sb,i) = UDF_VIRTUAL_MAP20;
+ 					UDF_SB_PARTFUNC(sb,i) = udf_get_pblock_virt20;
++					udf_debug("Set i=%d PARTFUNC = udf_get_pblock_virt20\n", i);
+ 				}
++				UDF_SB_PARTVSN(sb,i) = le16_to_cpu(upm2->volSeqNum);
++				UDF_SB_PARTNUM(sb,i) = le16_to_cpu(upm2->partitionNum);
+ 			}
+ 			else if (!strncmp(upm2->partIdent.ident, UDF_ID_SPARABLE, strlen(UDF_ID_SPARABLE)))
+ 			{
+@@ -930,6 +1089,7 @@
+ 				struct sparingTable *st;
+ 				struct sparablePartitionMap *spm = (struct sparablePartitionMap *)&(lvd->partitionMaps[offset]);
+ 
++				udf_debug("Parsing Logical vol part %d type %d  id=%s\n",i,type,UDF_ID_SPARABLE);
+ 				UDF_SB_PARTTYPE(sb,i) = UDF_SPARABLE_MAP15;
+ 				UDF_SB_TYPESPAR(sb,i).s_packet_len = le16_to_cpu(spm->packetLength);
+ 				for (j=0; j<spm->numSparingTables; j++)
+@@ -949,14 +1109,42 @@
+ 					}
+ 				}
+ 				UDF_SB_PARTFUNC(sb,i) = udf_get_pblock_spar15;
++				udf_debug("Set i=%d PARTFUNC = udf_get_pblock_spar15\n", i);
++				UDF_SB_PARTVSN(sb,i) = le16_to_cpu(upm2->volSeqNum);
++				UDF_SB_PARTNUM(sb,i) = le16_to_cpu(upm2->partitionNum);
++			}
++			else if (!strncmp(upm2->partIdent.ident, UDF_ID_METADATA, strlen(UDF_ID_METADATA)))
++			{
++				struct metadataPartitionMap *mdm = (struct metadataPartitionMap *)&(lvd->partitionMaps[offset]);
++
++				udf_debug("Parsing Logical vol part %d type %d  id=%s\n",i,type,UDF_ID_METADATA);
++				UDF_SB_PARTVSN(sb,i) = le16_to_cpu(upm2->volSeqNum);
++				UDF_SB_PARTNUM(sb,i) = le16_to_cpu(upm2->partitionNum);
++				
++				UDF_SB_PARTTYPE(sb,i) = UDF_METADATA_MAP25;
++				UDF_SB_PARTFUNC(sb,i) = udf_get_pblock_meta25;
++				udf_debug("Set i=%d PARTFUNC = udf_get_pblock_meta25\n", i);
++
++				UDF_SB_TYPEMETA(sb,i).s_meta_file_loc = le32_to_cpu(mdm->metadataFileLoc);
++				UDF_SB_TYPEMETA(sb,i).s_mirror_file_loc = le32_to_cpu(mdm->metadataMirrorFileLoc);
++				UDF_SB_TYPEMETA(sb,i).s_bitmap_file_loc = le32_to_cpu(mdm->metadataBitmapFileLoc);
++				UDF_SB_TYPEMETA(sb,i).s_alloc_unit_size = le32_to_cpu(mdm->allocUnitSize);
++				UDF_SB_TYPEMETA(sb,i).s_align_unit_size = le16_to_cpu(mdm->alignUnitSize);
++				UDF_SB_TYPEMETA(sb,i).s_dup_md_flag = mdm->flags & 0x01;
++				
++				udf_debug("Metadata Ident suffix=0x%x\n", (le16_to_cpu(((__u16 *)mdm->partIdent.identSuffix)[0])));
++				udf_debug("Metadata part num=%d\n",le16_to_cpu(mdm->partitionNum));
++				udf_debug("Metadata part alloc unit size=%d\n",le32_to_cpu(mdm->allocUnitSize));
++				udf_debug("Metadata file loc=%d\n",le32_to_cpu(mdm->metadataFileLoc));
++				udf_debug("Mirror file loc=%d\n",le32_to_cpu(mdm->metadataMirrorFileLoc));
++				udf_debug("Bitmap file loc=%d\n",le32_to_cpu(mdm->metadataBitmapFileLoc));
++				udf_debug("Duplicate Flag: %d %d\n", UDF_SB_TYPEMETA(sb,i).s_dup_md_flag, mdm->flags);
+ 			}
+ 			else
+ 			{
+ 				udf_debug("Unknown ident: %s\n", upm2->partIdent.ident);
+ 				continue;
+ 			}
+-			UDF_SB_PARTVSN(sb,i) = le16_to_cpu(upm2->volSeqNum);
+-			UDF_SB_PARTNUM(sb,i) = le16_to_cpu(upm2->partitionNum);
+ 		}
+ 		udf_debug("Partition (%d:%d) type %d on volume %d\n",
+ 			i, UDF_SB_PARTNUM(sb,i), type, UDF_SB_PARTVSN(sb,i));
+@@ -1160,7 +1348,15 @@
+ 		return 0;
+ 	}
+ 	else 
++	{
++		/* 
++			usefull to know the last written block because it helps in udf_find_anchor() 
++			especially when the anchor is not at block 256
++		*/
++		if (!UDF_SB_LASTBLOCK(sb))
++			UDF_SB_LASTBLOCK(sb) = udf_get_last_block(sb);
+ 		return !block;
++	}
+ }
+ 
+ static int
+@@ -1267,10 +1463,10 @@
+ 					pos = udf_block_map(UDF_SB_VAT(sb), 0);
+ 					bh = sb_bread(sb, pos);
+ 					UDF_SB_TYPEVIRT(sb,i).s_start_offset =
+-						le16_to_cpu(((struct virtualAllocationTable20 *)bh->b_data + udf_ext0_offset(UDF_SB_VAT(sb)))->lengthHeader) +
+-							udf_ext0_offset(UDF_SB_VAT(sb));
+-					UDF_SB_TYPEVIRT(sb,i).s_num_entries = (UDF_SB_VAT(sb)->i_size -
+-						UDF_SB_TYPEVIRT(sb,i).s_start_offset) >> 2;
++						le16_to_cpu(((struct virtualAllocationTable20 *)(bh->b_data + udf_ext0_offset(UDF_SB_VAT(sb))))->lengthHeader) +
++						udf_ext0_offset(UDF_SB_VAT(sb));
++					UDF_SB_TYPEVIRT(sb,i).s_num_entries = (UDF_SB_VAT(sb)->i_size + udf_ext0_offset(UDF_SB_VAT(sb)) -
++														   UDF_SB_TYPEVIRT(sb,i).s_start_offset) >> 2;
+ 					udf_release_data(bh);
+ 				}
+ 				UDF_SB_PARTROOT(sb,i) = udf_get_pblock(sb, 0, i, 0);
+@@ -1373,10 +1569,6 @@
+ 
+ 	memset(UDF_SB(sb), 0x00, sizeof(struct udf_sb_info));
+ 
+-#if UDFFS_RW != 1
+-	sb->s_flags |= MS_RDONLY;
+-#endif
+-
+ 	if (!udf_parse_options((char *)options, &uopt))
+ 		goto error_out;
+ 
+@@ -1387,7 +1579,7 @@
+ 			"utf8 cannot be combined with iocharset\n");
+ 		goto error_out;
+ 	}
+-#ifdef CONFIG_NLS
++#ifdef CONFIG_UDF_NLS
+ 	if ((uopt.flags & (1 << UDF_FLAG_NLS_MAP)) && !uopt.nls_map)
+ 	{
+ 		uopt.nls_map = load_nls_default();
+@@ -1423,7 +1615,7 @@
+ 	UDF_SB_LASTBLOCK(sb) = uopt.lastblock;
+ 	UDF_SB_ANCHOR(sb)[0] = UDF_SB_ANCHOR(sb)[1] = 0;
+ 	UDF_SB_ANCHOR(sb)[2] = uopt.anchor;
+-	UDF_SB_ANCHOR(sb)[3] = UDF_SB_SESSION(sb) + 256;
++	UDF_SB_ANCHOR(sb)[3] = 256;
+ 
+ 	if (udf_check_valid(sb, uopt.novrs, silent)) /* read volume recognition sequences */
+ 	{
+@@ -1478,6 +1670,17 @@
+ 		goto error_out;
+ 	}
+ 
++	/* check for metadata partitions and load the associated data if there's any found */
++	for (i = 0; i < UDF_SB_NUMPARTS(sb); i++)
++	{
++		if( (UDF_SB_PARTTYPE(sb, i) == UDF_METADATA_MAP25) &&
++		    udf_load_metadata_file_entries(sb, i, &fileset) )
++		{
++			printk( "UDF-fs: error loading MetaData partition map %d\n", i );
++			goto error_out;
++		}
++	}
++	
+ 	if ( udf_find_fileset(sb, &fileset, &rootdir) )
+ 	{
+ 		printk("UDF-fs: No fileset found\n");
+@@ -1487,10 +1690,32 @@
+ 	if (!silent)
+ 	{
+ 		timestamp ts;
++		int k;
++		uint8_t vid[128] = "";
++
++		for (k=0; k<UDF_SB_NUMPARTS(sb); k++)
++		{
++			if (UDF_SB_PARTTYPE(sb,k) == UDF_VIRTUAL_MAP20)
++			{
++				struct buffer_head *bh = NULL;
++				uint32_t pos;
++
++				pos = udf_block_map(UDF_SB_VAT(sb), 0);
++				bh = sb_bread(sb, pos);
++				memcpy (vid, ((struct virtualAllocationTable20 *)(bh->b_data + udf_ext0_offset(UDF_SB_VAT(sb))))->logicalVolIdent, 128);
++				vid[127] = '\0';		/* just to be sure */
++				udf_release_data(bh);
++				break;
++			}
++		}
++		
++		if (vid[0] == '\0')
++			memcpy (vid, UDF_SB_VOLIDENT(sb), 32);
++
+ 		udf_time_to_stamp(&ts, UDF_SB_RECORDTIME(sb), 0);
+-		udf_info("UDF %s-%s (%s) Mounting volume '%s', timestamp %04u/%02u/%02u %02u:%02u (%x)\n",
+-			UDFFS_VERSION, UDFFS_RW ? "rw" : "ro", UDFFS_DATE,
+-			UDF_SB_VOLIDENT(sb), ts.year, ts.month, ts.day, ts.hour, ts.minute,
++		udf_info("UDF %s (%s) Mounting volume '%s', timestamp %04u/%02u/%02u %02u:%02u (%x)\n",
++			UDFFS_VERSION, UDFFS_DATE,
++			vid, ts.year, ts.month, ts.day, ts.hour, ts.minute,
+ 			ts.typeAndTimezone);
+ 	}
+ 	if (!(sb->s_flags & MS_RDONLY))
+@@ -1515,10 +1740,15 @@
+ 		iput(inode);
+ 		goto error_out;
+ 	}
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,19)
+ 	sb->s_maxbytes = MAX_LFS_FILESIZE;
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,3)
++	sb->s_maxbytes = ~0ULL;
++#endif
+ 	return sb;
+ 
+ error_out:
++	udf_release_metadata(sb);
+ 	if (UDF_SB_VAT(sb))
+ 		iput(UDF_SB_VAT(sb));
+ 	if (UDF_SB_NUMPARTS(sb))
+@@ -1528,30 +1758,16 @@
+ 		if (UDF_SB_PARTFLAGS(sb, UDF_SB_PARTITION(sb)) & UDF_PART_FLAG_FREED_TABLE)
+ 			iput(UDF_SB_PARTMAPS(sb)[UDF_SB_PARTITION(sb)].s_fspace.s_table);
+ 		if (UDF_SB_PARTFLAGS(sb, UDF_SB_PARTITION(sb)) & UDF_PART_FLAG_UNALLOC_BITMAP)
+-		{
+-			for (i=0; i<UDF_SB_BITMAP_NR_GROUPS(sb,UDF_SB_PARTITION(sb),s_uspace); i++)
+-			{
+-				if (UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_uspace,i))
+-					udf_release_data(UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_uspace,i));
+-			}
+-			kfree(UDF_SB_PARTMAPS(sb)[UDF_SB_PARTITION(sb)].s_uspace.s_bitmap);
+-		}
++			UDF_SB_FREE_BITMAP(sb,UDF_SB_PARTITION(sb),s_uspace);
+ 		if (UDF_SB_PARTFLAGS(sb, UDF_SB_PARTITION(sb)) & UDF_PART_FLAG_FREED_BITMAP)
+-		{
+-			for (i=0; i<UDF_SB_BITMAP_NR_GROUPS(sb,UDF_SB_PARTITION(sb),s_fspace); i++)
+-			{
+-				if (UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_fspace,i))
+-					udf_release_data(UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_fspace,i));
+-			}
+-			kfree(UDF_SB_PARTMAPS(sb)[UDF_SB_PARTITION(sb)].s_fspace.s_bitmap);
+-		}
++			UDF_SB_FREE_BITMAP(sb,UDF_SB_PARTITION(sb),s_fspace);
+ 		if (UDF_SB_PARTTYPE(sb, UDF_SB_PARTITION(sb)) == UDF_SPARABLE_MAP15)
+ 		{
+ 			for (i=0; i<4; i++)
+ 				udf_release_data(UDF_SB_TYPESPAR(sb, UDF_SB_PARTITION(sb)).s_spar_map[i]);
+ 		}
+ 	}
+-#ifdef CONFIG_NLS
++#ifdef CONFIG_UDF_NLS
+ 	if (UDF_QUERY_FLAG(sb, UDF_FLAG_NLS_MAP))
+ 		unload_nls(UDF_SB(sb)->s_nls_map);
+ #endif
+@@ -1609,6 +1825,8 @@
+ {
+ 	int i;
+ 
++	udf_release_metadata(sb);
++
+ 	if (UDF_SB_VAT(sb))
+ 		iput(UDF_SB_VAT(sb));
+ 	if (UDF_SB_NUMPARTS(sb))
+@@ -1618,30 +1836,16 @@
+ 		if (UDF_SB_PARTFLAGS(sb, UDF_SB_PARTITION(sb)) & UDF_PART_FLAG_FREED_TABLE)
+ 			iput(UDF_SB_PARTMAPS(sb)[UDF_SB_PARTITION(sb)].s_fspace.s_table);
+ 		if (UDF_SB_PARTFLAGS(sb, UDF_SB_PARTITION(sb)) & UDF_PART_FLAG_UNALLOC_BITMAP)
+-		{
+-			for (i=0; i<UDF_SB_BITMAP_NR_GROUPS(sb,UDF_SB_PARTITION(sb),s_uspace); i++)
+-			{
+-				if (UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_uspace,i))
+-					udf_release_data(UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_uspace,i));
+-			}
+-			kfree(UDF_SB_PARTMAPS(sb)[UDF_SB_PARTITION(sb)].s_uspace.s_bitmap);
+-		}
++			UDF_SB_FREE_BITMAP(sb,UDF_SB_PARTITION(sb),s_uspace);
+ 		if (UDF_SB_PARTFLAGS(sb, UDF_SB_PARTITION(sb)) & UDF_PART_FLAG_FREED_BITMAP)
+-		{
+-			for (i=0; i<UDF_SB_BITMAP_NR_GROUPS(sb,UDF_SB_PARTITION(sb),s_fspace); i++)
+-			{
+-				if (UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_fspace,i))
+-					udf_release_data(UDF_SB_BITMAP(sb,UDF_SB_PARTITION(sb),s_fspace,i));
+-			}
+-			kfree(UDF_SB_PARTMAPS(sb)[UDF_SB_PARTITION(sb)].s_fspace.s_bitmap);
+-		}
++			UDF_SB_FREE_BITMAP(sb,UDF_SB_PARTITION(sb),s_fspace);
+ 		if (UDF_SB_PARTTYPE(sb, UDF_SB_PARTITION(sb)) == UDF_SPARABLE_MAP15)
+ 		{
+ 			for (i=0; i<4; i++)
+ 				udf_release_data(UDF_SB_TYPESPAR(sb, UDF_SB_PARTITION(sb)).s_spar_map[i]);
+ 		}
+ 	}
+-#ifdef CONFIG_NLS
++#ifdef CONFIG_UDF_NLS
+ 	if (UDF_QUERY_FLAG(sb, UDF_FLAG_NLS_MAP))
+ 		unload_nls(UDF_SB(sb)->s_nls_map);
+ #endif
+@@ -1677,7 +1881,7 @@
+ 		le32_to_cpu(UDF_SB_LVIDIU(sb)->numDirs)) : 0) + buf->f_bfree;
+ 	buf->f_ffree = buf->f_bfree;
+ 	/* __kernel_fsid_t f_fsid */
+-	buf->f_namelen = UDF_NAME_LEN;
++	buf->f_namelen = UDF_NAME_LEN-2;
+ 
+ 	return 0;
+ }
+@@ -1700,6 +1904,8 @@
+ 	uint16_t ident;
+ 	struct spaceBitmapDesc *bm;
+ 
++	lock_kernel();
++
+ 	loc.logicalBlockNum = bitmap->s_extPosition;
+ 	loc.partitionReferenceNum = UDF_SB_PARTITION(sb);
+ 	bh = udf_read_ptagged(sb, loc, 0, &ident);
+@@ -1707,13 +1913,13 @@
+ 	if (!bh)
+ 	{
+ 		printk(KERN_ERR "udf: udf_count_free failed\n");
+-		return 0;
++		goto out;
+ 	}
+ 	else if (ident != TAG_IDENT_SBD)
+ 	{
+ 		udf_release_data(bh);
+ 		printk(KERN_ERR "udf: udf_count_free failed\n");
+-		return 0;
++		goto out;
+ 	}
+ 
+ 	bm = (struct spaceBitmapDesc *)bh->b_data;
+@@ -1739,13 +1945,17 @@
+ 			if (!bh)
+ 			{
+ 				udf_debug("read failed\n");
+-				return accum;
++				goto out;
+ 			}
+ 			index = 0;
+ 			ptr = (uint8_t *)bh->b_data;
+ 		}
+ 	}
+ 	udf_release_data(bh);
++
++out:
++	unlock_kernel();
++
+ 	return accum;
+ }
+ 
+@@ -1758,6 +1968,8 @@
+ 	int8_t etype;
+ 	struct buffer_head *bh = NULL;
+ 
++	lock_kernel();
++
+ 	bloc = UDF_I_LOCATION(table);
+ 	extoffset = sizeof(struct unallocSpaceEntry);
+ 
+@@ -1766,6 +1978,9 @@
+ 		accum += (elen >> table->i_sb->s_blocksize_bits);
+ 	}
+ 	udf_release_data(bh);
++
++	unlock_kernel();
++
+ 	return accum;
+ }
+ 	
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/symlink.c linuxmips-2.4.30/fs/udf/symlink.c
+--- linuxmips-2.4.30.ref/fs/udf/symlink.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/symlink.c	2007-05-10 10:49:29.000000000 -0700
+@@ -29,7 +29,7 @@
+ #include <linux/errno.h>
+ #include <linux/fs.h>
+ #include <linux/udf_fs.h>
+-#include <linux/sched.h>
++#include <linux/time.h>
+ #include <linux/mm.h>
+ #include <linux/stat.h>
+ #include <linux/slab.h>
+@@ -37,7 +37,7 @@
+ #include <linux/smp_lock.h>
+ #include "udf_i.h"
+ 
+-static void udf_pc_to_char(char *from, int fromlen, char *to)
++static void udf_pc_to_char(struct super_block *sb, char *from, int fromlen, char *to)
+ {
+ 	struct pathComponent *pc;
+ 	int elen = 0;
+@@ -65,9 +65,9 @@
+ 				/* that would be . - just ignore */
+ 				break;
+ 			case 5:
+-				memcpy(p, pc->componentIdent, pc->lengthComponentIdent);
+-				p += pc->lengthComponentIdent;
++				p += udf_get_filename(sb, pc->componentIdent, p, pc->lengthComponentIdent);
+ 				*p++ = '/';
++				break;
+ 		}
+ 		elen += sizeof(struct pathComponent) + pc->lengthComponentIdent;
+ 	}
+@@ -84,17 +84,10 @@
+ 	char *symlink;
+ 	int err = -EIO;
+ 	char *p = kmap(page);
+-	
++
+ 	lock_kernel();
+ 	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB)
+-	{
+-		bh = udf_tread(inode->i_sb, inode->i_ino);
+-
+-		if (!bh)
+-			goto out;
+-
+-		symlink = bh->b_data + udf_file_entry_alloc_offset(inode);
+-	}
++		symlink = UDF_I_DATA(inode) + UDF_I_LENEATTR(inode);
+ 	else
+ 	{
+ 		bh = sb_bread(inode->i_sb, udf_block_map(inode, 0));
+@@ -105,19 +98,19 @@
+ 		symlink = bh->b_data;
+ 	}
+ 
+-	udf_pc_to_char(symlink, inode->i_size, p);
++	udf_pc_to_char(inode->i_sb, symlink, inode->i_size, p);
+ 	udf_release_data(bh);
+ 
+ 	unlock_kernel();
+ 	SetPageUptodate(page);
+ 	kunmap(page);
+-	UnlockPage(page);
++	unlock_page(page);
+ 	return 0;
+ out:
+ 	unlock_kernel();
+ 	SetPageError(page);
+ 	kunmap(page);
+-	UnlockPage(page);
++	unlock_page(page);
+ 	return err;
+ }
+ 
+@@ -125,5 +118,5 @@
+  * symlinks can't do much...
+  */
+ struct address_space_operations udf_symlink_aops = {
+-	readpage:		udf_symlink_filler,
++	.readpage		= udf_symlink_filler,
+ };
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/truncate.c linuxmips-2.4.30/fs/udf/truncate.c
+--- linuxmips-2.4.30.ref/fs/udf/truncate.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/truncate.c	2007-05-10 10:49:29.000000000 -0700
+@@ -15,7 +15,7 @@
+  *		ftp://prep.ai.mit.edu/pub/gnu/GPL
+  *	Each contributing author retains all rights to their own work.
+  *
+- *  (C) 1999-2001 Ben Fennema
++ *  (C) 1999-2004 Ben Fennema
+  *  (C) 1999 Stelias Computing Inc
+  *
+  * HISTORY
+@@ -57,7 +57,12 @@
+ 		if (last_block - first_block > 0)
+ 		{
+ 			if (etype == (EXT_RECORDED_ALLOCATED >> 30))
++			{
++#ifdef OLD_QUOTA
++				inode->i_blocks -= ((inode->i_sb->s_blocksize / 512) * (last_block - first_block));
++#endif
+ 				mark_inode_dirty(inode);
++			}
+ 
+ 			if (etype != (EXT_NOT_RECORDED_NOT_ALLOCATED >> 30))
+ 				udf_free_blocks(inode->i_sb, inode, eloc, first_block, last_block - first_block);
+@@ -65,6 +70,67 @@
+ 	}
+ }
+ 
++void udf_discard_prealloc(struct inode * inode)
++{
++	lb_addr bloc, eloc;
++	uint32_t extoffset = 0, elen, nelen;
++	uint64_t lbcount = 0;
++	int8_t etype = -1, netype;
++	struct buffer_head *bh = NULL;
++	int adsize;
++
++	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB ||
++		inode->i_size == UDF_I_LENEXTENTS(inode))
++	{
++		return;
++	}
++
++	if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_SHORT)
++		adsize = sizeof(short_ad);
++	else if (UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_LONG)
++		adsize = sizeof(long_ad);
++	else
++		adsize = 0;
++
++	bloc = UDF_I_LOCATION(inode);
++
++	while ((netype = udf_next_aext(inode, &bloc, &extoffset, &eloc, &elen, &bh, 1)) != -1)
++	{
++		etype = netype;
++		lbcount += elen;
++		if (lbcount > inode->i_size && lbcount - inode->i_size < inode->i_sb->s_blocksize)
++		{
++			nelen = elen - (lbcount - inode->i_size);
++			extent_trunc(inode, bloc, extoffset-adsize, eloc, etype, elen, bh, nelen);
++			lbcount = inode->i_size;
++		}
++	}
++	if (etype == (EXT_NOT_RECORDED_ALLOCATED >> 30))
++	{
++		extoffset -= adsize;
++		lbcount -= elen;
++		extent_trunc(inode, bloc, extoffset, eloc, etype, elen, bh, 0);
++		if (!bh)
++		{
++			UDF_I_LENALLOC(inode) = extoffset - udf_file_entry_alloc_offset(inode);
++			mark_inode_dirty(inode);
++		}
++		else
++		{
++			struct allocExtDesc *aed = (struct allocExtDesc *)(bh->b_data);
++			aed->lengthAllocDescs = cpu_to_le32(extoffset - sizeof(struct allocExtDesc));
++			if (!UDF_QUERY_FLAG(inode->i_sb, UDF_FLAG_STRICT) || UDF_SB_UDFREV(inode->i_sb) >= 0x0201)
++				udf_update_tag(bh->b_data, extoffset);
++			else
++				udf_update_tag(bh->b_data, sizeof(struct allocExtDesc));
++			mark_buffer_dirty_inode(bh, inode);
++		}
++	}
++	UDF_I_LENEXTENTS(inode) = lbcount;
++
++	udf_release_data(bh);
++}
++
+ void udf_truncate_extents(struct inode * inode)
+ {
+ 	lb_addr bloc, eloc, neloc = { 0, 0 };
+@@ -94,7 +160,7 @@
+ 		else
+ 			lenalloc = extoffset - adsize;
+ 
+-		if (!memcmp(&UDF_I_LOCATION(inode), &bloc, sizeof(lb_addr)))
++		if (!bh)
+ 			lenalloc -= udf_file_entry_alloc_offset(inode);
+ 		else
+ 			lenalloc -= sizeof(struct allocExtDesc);
+@@ -107,15 +173,15 @@
+ 				extoffset = 0;
+ 				if (lelen)
+ 				{
+-					if (!memcmp(&UDF_I_LOCATION(inode), &bloc, sizeof(lb_addr)))
+-						memset(bh->b_data, 0x00, udf_file_entry_alloc_offset(inode));
++					if (!bh)
++						BUG();
+ 					else
+ 						memset(bh->b_data, 0x00, sizeof(struct allocExtDesc));
+ 					udf_free_blocks(inode->i_sb, inode, bloc, 0, lelen);
+ 				}
+ 				else
+ 				{
+-					if (!memcmp(&UDF_I_LOCATION(inode), &bloc, sizeof(lb_addr)))
++					if (!bh)
+ 					{
+ 						UDF_I_LENALLOC(inode) = lenalloc;
+ 						mark_inode_dirty(inode);
+@@ -134,9 +200,9 @@
+ 				}
+ 
+ 				udf_release_data(bh);
+-				bh = NULL;
+-
++				extoffset = sizeof(struct allocExtDesc);
+ 				bloc = eloc;
++				bh = udf_tread(inode->i_sb, udf_get_lb_pblock(inode->i_sb, bloc, 0));
+ 				if (elen)
+ 					lelen = (elen + inode->i_sb->s_blocksize - 1) >>
+ 						inode->i_sb->s_blocksize_bits;
+@@ -152,15 +218,15 @@
+ 
+ 		if (lelen)
+ 		{
+-			if (!memcmp(&UDF_I_LOCATION(inode), &bloc, sizeof(lb_addr)))
+-				memset(bh->b_data, 0x00, udf_file_entry_alloc_offset(inode));
++			if (!bh)
++				BUG();
+ 			else
+ 				memset(bh->b_data, 0x00, sizeof(struct allocExtDesc));
+ 			udf_free_blocks(inode->i_sb, inode, bloc, 0, lelen);
+ 		}
+ 		else
+ 		{
+-			if (!memcmp(&UDF_I_LOCATION(inode), &bloc, sizeof(lb_addr)))
++			if (!bh)
+ 			{
+ 				UDF_I_LENALLOC(inode) = lenalloc;
+ 				mark_inode_dirty(inode);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/udfdecl.h linuxmips-2.4.30/fs/udf/udfdecl.h
+--- linuxmips-2.4.30.ref/fs/udf/udfdecl.h	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/udfdecl.h	2007-05-10 10:49:29.000000000 -0700
+@@ -28,15 +28,17 @@
+ #define UDF_EXTENT_FLAG_MASK	0xC0000000
+ 
+ #define UDF_NAME_PAD		4
+-#define UDF_NAME_LEN		255
++#define UDF_NAME_LEN		256
+ #define UDF_PATH_LEN		1023
+ 
+ #define CURRENT_UTIME	(xtime.tv_usec)
+ 
+ #define udf_file_entry_alloc_offset(inode)\
+-	((UDF_I_EXTENDED_FE(inode) ?\
+-		sizeof(struct extendedFileEntry) :\
+-		sizeof(struct fileEntry)) + UDF_I_LENEATTR(inode))
++	(UDF_I_USE(inode) ?\
++		sizeof(struct unallocSpaceEntry) :\
++		((UDF_I_EFE(inode) ?\
++			sizeof(struct extendedFileEntry) :\
++			sizeof(struct fileEntry)) + UDF_I_LENEATTR(inode)))
+ 
+ #define udf_ext0_offset(inode)\
+ 	(UDF_I_ALLOCTYPE(inode) == ICBTAG_FLAG_AD_IN_ICB ?\
+@@ -66,13 +68,6 @@
+ 	int eoffset;
+ };
+ 
+-struct udf_directory_record
+-{
+-	uint32_t	d_parent;
+-	uint32_t	d_inode;
+-	uint32_t	d_name[255];
+-};
+-
+ struct udf_vds_record
+ {
+ 	uint32_t block;
+@@ -88,7 +83,7 @@
+ struct ustr
+ {
+ 	uint8_t u_cmpID;
+-	uint8_t u_name[UDF_NAME_LEN];
++	uint8_t u_name[UDF_NAME_LEN-2];
+ 	uint8_t u_len;
+ };
+ 
+@@ -113,6 +108,7 @@
+ extern void udf_read_inode(struct inode *);
+ extern void udf_put_inode(struct inode *);
+ extern void udf_delete_inode(struct inode *);
++extern void udf_clear_inode(struct inode *);
+ extern void udf_write_inode(struct inode *, int);
+ extern long udf_block_map(struct inode *, long);
+ extern int8_t inode_bmap(struct inode *, int, lb_addr *, uint32_t *, lb_addr *, uint32_t *, uint32_t *, struct buffer_head **);
+@@ -122,17 +118,18 @@
+ extern int8_t udf_delete_aext(struct inode *, lb_addr, int, lb_addr, uint32_t, struct buffer_head *);
+ extern int8_t udf_next_aext(struct inode *, lb_addr *, int *, lb_addr *, uint32_t *, struct buffer_head **, int);
+ extern int8_t udf_current_aext(struct inode *, lb_addr *, int *, lb_addr *, uint32_t *, struct buffer_head **, int);
+-extern void udf_discard_prealloc(struct inode *);
+ 
+ /* misc.c */
+ extern int udf_read_tagged_data(char *, int size, int fd, int block, int partref);
+ extern struct buffer_head *udf_tgetblk(struct super_block *, int);
+ extern struct buffer_head *udf_tread(struct super_block *, int);
+-extern struct genericFormat *udf_add_extendedattr(struct inode *, uint32_t, uint32_t, uint8_t, struct buffer_head **);
+-extern struct genericFormat *udf_get_extendedattr(struct inode *, uint32_t, uint8_t, struct buffer_head **);
++extern struct genericFormat *udf_add_extendedattr(struct inode *, uint32_t, uint32_t, uint8_t);
++extern struct genericFormat *udf_get_extendedattr(struct inode *, uint32_t, uint8_t);
+ extern struct buffer_head *udf_read_tagged(struct super_block *, uint32_t, uint32_t, uint16_t *);
+ extern struct buffer_head *udf_read_ptagged(struct super_block *, lb_addr, uint32_t, uint16_t *);
+ extern void udf_release_data(struct buffer_head *);
++extern void udf_update_tag(char *, int);
++extern void udf_new_tag(char *, uint16_t, uint16_t, uint16_t, uint32_t, int);
+ 
+ /* lowlevel.c */
+ extern unsigned int udf_get_last_session(struct super_block *);
+@@ -143,22 +140,37 @@
+ extern uint32_t udf_get_pblock_virt15(struct super_block *, uint32_t, uint16_t, uint32_t);
+ extern uint32_t udf_get_pblock_virt20(struct super_block *, uint32_t, uint16_t, uint32_t);
+ extern uint32_t udf_get_pblock_spar15(struct super_block *, uint32_t, uint16_t, uint32_t);
++extern uint32_t udf_get_pblock_meta25(struct super_block *, uint32_t, uint16_t, uint32_t);
+ extern int udf_relocate_blocks(struct super_block *, long, long *);
+ 
+ /* unicode.c */
+ extern int udf_get_filename(struct super_block *, uint8_t *, uint8_t *, int);
++extern int udf_put_filename(struct super_block *, const uint8_t *, uint8_t *, int);
++extern int udf_build_ustr(struct ustr *, dstring *, int);
++extern int udf_CS0toUTF8(struct ustr *, struct ustr *);
+ 
+ /* ialloc.c */
+ extern void udf_free_inode(struct inode *);
++#ifndef OLD_QUOTA
+ extern struct inode * udf_new_inode (struct inode *, int, int *);
++#else
++extern struct inode * udf_new_inode (const struct inode *, int, int *);
++#endif
+ 
+ /* truncate.c */
++extern void udf_discard_prealloc(struct inode *);
+ extern void udf_truncate_extents(struct inode *);
+ 
+ /* balloc.c */
++#ifndef OLD_QUOTA
+ extern void udf_free_blocks(struct super_block *, struct inode *, lb_addr, uint32_t, uint32_t);
+ extern int udf_prealloc_blocks(struct super_block *, struct inode *, uint16_t, uint32_t, uint32_t);
+ extern int udf_new_block(struct super_block *, struct inode *, uint16_t, uint32_t, int *);
++#else
++extern void udf_free_blocks(struct super_block *, const struct inode *, lb_addr, uint32_t, uint32_t);
++extern int udf_prealloc_blocks(struct super_block *, const struct inode *, uint16_t, uint32_t, uint32_t);
++extern int udf_new_block(struct super_block *, const struct inode *, uint16_t, uint32_t, int *);
++#endif
+ 
+ /* fsync.c */
+ extern int udf_fsync_file(struct file *, struct dentry *, int);
+@@ -167,40 +179,28 @@
+ /* directory.c */
+ extern uint8_t * udf_filead_read(struct inode *, uint8_t *, uint8_t, lb_addr, int *, int *, struct buffer_head **, int *);
+ extern struct fileIdentDesc * udf_fileident_read(struct inode *, loff_t *, struct udf_fileident_bh *, struct fileIdentDesc *, lb_addr *, uint32_t *, lb_addr *, uint32_t *, uint32_t *, struct buffer_head **);
+-
+-/* unicode.c */
+-extern int udf_ustr_to_dchars(uint8_t *, const struct ustr *, int);
+-extern int udf_ustr_to_char(uint8_t *, const struct ustr *, int);
+-extern int udf_ustr_to_dstring(dstring *, const struct ustr *, int);
+-extern int udf_dchars_to_ustr(struct ustr *, const uint8_t *, int);
+-extern int udf_char_to_ustr(struct ustr *, const uint8_t *, int);
+-extern int udf_dstring_to_ustr(struct ustr *, const dstring *, int);
+-extern int udf_translate_to_linux(uint8_t *, uint8_t *, int, uint8_t *, int);
+-extern int udf_build_ustr(struct ustr *, dstring *, int);
+-extern int udf_build_ustr_exact(struct ustr *, dstring *, int);
+-extern int udf_CS0toUTF8(struct ustr *, struct ustr *);
+-extern int udf_UTF8toCS0(dstring *, struct ustr *, int);
+-extern int udf_CS0toNLS(struct nls_table *, struct ustr *, struct ustr *);
+-extern int udf_NLStoCS0(struct nls_table *, dstring *, struct ustr *, int);
++extern struct fileIdentDesc * udf_get_fileident(void * buffer, int bufsize, int * offset);
++extern extent_ad * udf_get_fileextent(void * buffer, int bufsize, int * offset);
++extern long_ad * udf_get_filelongad(uint8_t *, int, int *, int);
++extern short_ad * udf_get_fileshortad(uint8_t *, int, int *, int);
++extern uint8_t * udf_get_filead(struct fileEntry *, uint8_t *, int, int, int, int *);
+ 
+ /* crc.c */
+ extern uint16_t udf_crc(uint8_t *, uint32_t, uint16_t);
+ 
+-/* misc.c */
+-extern uint32_t udf64_low32(uint64_t);
+-extern uint32_t udf64_high32(uint64_t);
+-extern void udf_update_tag(char *, int);
+-extern void udf_new_tag(char *, uint16_t, uint16_t, uint16_t, uint32_t, int);
+-
+ /* udftime.c */
+ extern time_t *udf_stamp_to_time(time_t *, long *, timestamp);
+ extern timestamp *udf_time_to_stamp(timestamp *, time_t, long);
+ 
+-/* directory.c */
+-extern struct fileIdentDesc * udf_get_fileident(void * buffer, int bufsize, int * offset);
+-extern extent_ad * udf_get_fileextent(void * buffer, int bufsize, int * offset);
+-extern long_ad * udf_get_filelongad(void * buffer, int bufsize, int * offset, int);
+-extern short_ad * udf_get_fileshortad(void * buffer, int bufsize, int * offset, int);
+-extern uint8_t * udf_get_filead(struct fileEntry *, uint8_t *, int, int, int, int *);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,18)
++static inline struct buffer_head * sb_bread(struct super_block *sb, int block)
++{
++	return bread(sb->s_dev, block, sb->s_blocksize);
++}
++static inline struct buffer_head * sb_getblk(struct super_block *sb, int block)
++{
++	return getblk(sb->s_dev, block, sb->s_blocksize);
++}
++#endif
+ 
+ #endif /* __UDF_DECL_H */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/udf_i.h linuxmips-2.4.30/fs/udf/udf_i.h
+--- linuxmips-2.4.30.ref/fs/udf/udf_i.h	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/udf_i.h	2007-05-10 10:49:29.000000000 -0700
+@@ -9,14 +9,17 @@
+ #define UDF_I_LENEXTENTS(X)	( UDF_I(X)->i_lenExtents )
+ #define UDF_I_UNIQUE(X)		( UDF_I(X)->i_unique )
+ #define UDF_I_ALLOCTYPE(X)	( UDF_I(X)->i_alloc_type )
+-#define UDF_I_EXTENDED_FE(X)	( UDF_I(X)->i_extended_fe )
+-#define UDF_I_STRAT4096(X)	( UDF_I(X)->i_strat_4096 )
+-#define UDF_I_NEW_INODE(X)	( UDF_I(X)->i_new_inode )
++#define UDF_I_EFE(X)		( UDF_I(X)->i_efe )
++#define UDF_I_USE(X)		( UDF_I(X)->i_use )
++#define UDF_I_STRAT4096(X)	( UDF_I(X)->i_strat4096 )
+ #define UDF_I_NEXT_ALLOC_BLOCK(X)	( UDF_I(X)->i_next_alloc_block )
+ #define UDF_I_NEXT_ALLOC_GOAL(X)	( UDF_I(X)->i_next_alloc_goal )
+ #define UDF_I_UMTIME(X)		( UDF_I(X)->i_umtime )
+ #define UDF_I_UCTIME(X)		( UDF_I(X)->i_uctime )
+ #define UDF_I_CRTIME(X)		( UDF_I(X)->i_crtime )
+ #define UDF_I_UCRTIME(X)	( UDF_I(X)->i_ucrtime )
++#define UDF_I_SAD(X)		( UDF_I(X)->i_ext.i_sad )
++#define UDF_I_LAD(X)		( UDF_I(X)->i_ext.i_lad )
++#define UDF_I_DATA(X)		( UDF_I(X)->i_ext.i_data )
+ 
+ #endif /* !defined(_LINUX_UDF_I_H) */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/udf_sb.h linuxmips-2.4.30/fs/udf/udf_sb.h
+--- linuxmips-2.4.30.ref/fs/udf/udf_sb.h	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/udf_sb.h	2007-05-10 10:49:29.000000000 -0700
+@@ -4,7 +4,7 @@
+ /* Since UDF 2.01 is ISO 13346 based... */
+ #define UDF_SUPER_MAGIC			0x15013346
+ 
+-#define UDF_MAX_READ_VERSION		0x0201
++#define UDF_MAX_READ_VERSION		0x0250
+ #define UDF_MAX_WRITE_VERSION		0x0201
+ 
+ #define UDF_FLAG_USE_EXTENDED_FE	0
+@@ -60,13 +60,14 @@
+ {\
+ 	int nr_groups = ((UDF_SB_PARTLEN((X),(Y)) + (sizeof(struct spaceBitmapDesc) << 3) +\
+ 		((X)->s_blocksize * 8) - 1) / ((X)->s_blocksize * 8));\
+-	UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap = kmalloc(sizeof(struct udf_bitmap) +\
+-		sizeof(struct buffer_head *) * nr_groups,\
+-		GFP_KERNEL);\
++	int size = sizeof(struct udf_bitmap) + (sizeof(struct buffer_head *) * nr_groups);\
++	if (size <= PAGE_SIZE)\
++		UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap = kmalloc(size, GFP_KERNEL);\
++	else\
++		UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap = vmalloc(size);\
+ 	if (UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap != NULL)\
+ 	{\
+-		memset(UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap, 0x00,\
+-			sizeof(struct udf_bitmap) + sizeof(struct buffer_head *) * nr_groups);\
++		memset(UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap, 0x00, size);\
+ 		UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap->s_block_bitmap =\
+ 			(struct buffer_head **)(UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap + 1);\
+ 		UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap->s_nr_groups = nr_groups;\
+@@ -77,6 +78,21 @@
+ 	}\
+ }
+ 
++#define UDF_SB_FREE_BITMAP(X,Y,Z)\
++{\
++	int i;\
++	int nr_groups = UDF_SB_BITMAP_NR_GROUPS(X,Y,Z);\
++	int size = sizeof(struct udf_bitmap) + (sizeof(struct buffer_head *) * nr_groups);\
++	for (i=0; i<nr_groups; i++)\
++	{\
++		if (UDF_SB_BITMAP(X,Y,Z,i))\
++			udf_release_data(UDF_SB_BITMAP(X,Y,Z,i));\
++	}\
++	if (size <= PAGE_SIZE)\
++		kfree(UDF_SB_PARTMAPS(X)[Y].Z.s_bitmap);\
++	else\
++		vfree(UDF_SB_PARTMAPS(X)[Y].Z.s_bitmap);\
++}
+ 
+ #define UDF_QUERY_FLAG(X,Y)			( UDF_SB(X)->s_flags & ( 1 << (Y) ) )
+ #define UDF_SET_FLAG(X,Y)			( UDF_SB(X)->s_flags |= ( 1 << (Y) ) )
+@@ -92,10 +108,11 @@
+ #define UDF_SB_PARTNUM(X,Y)			( UDF_SB_PARTMAPS(X)[(Y)].s_partition_num )
+ #define UDF_SB_TYPESPAR(X,Y)			( UDF_SB_PARTMAPS(X)[(Y)].s_type_specific.s_sparing )
+ #define UDF_SB_TYPEVIRT(X,Y)			( UDF_SB_PARTMAPS(X)[(Y)].s_type_specific.s_virtual )
++#define UDF_SB_TYPEMETA(X,Y)			( UDF_SB_PARTMAPS(X)[(Y)].s_type_specific.s_metadata )
+ #define UDF_SB_PARTFUNC(X,Y)			( UDF_SB_PARTMAPS(X)[(Y)].s_partition_func )
+ #define UDF_SB_PARTFLAGS(X,Y)			( UDF_SB_PARTMAPS(X)[(Y)].s_partition_flags )
+ #define UDF_SB_BITMAP(X,Y,Z,I)			( UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap->s_block_bitmap[I] )
+-#define UDF_SB_BITMAP_NR_GROUPS(X,Y,Z)	( UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap->s_nr_groups )
++#define UDF_SB_BITMAP_NR_GROUPS(X,Y,Z)		( UDF_SB_PARTMAPS(X)[(Y)].Z.s_bitmap->s_nr_groups )
+ 
+ #define UDF_SB_VOLIDENT(X)			( UDF_SB(X)->s_volident )
+ #define UDF_SB_NUMPARTS(X)			( UDF_SB(X)->s_partitions )
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/udf/unicode.c linuxmips-2.4.30/fs/udf/unicode.c
+--- linuxmips-2.4.30.ref/fs/udf/unicode.c	2002-06-26 15:36:23.000000000 -0700
++++ linuxmips-2.4.30/fs/udf/unicode.c	2007-05-10 10:49:29.000000000 -0700
+@@ -32,48 +32,11 @@
+ 
+ #include "udf_sb.h"
+ 
+-int udf_ustr_to_dchars(uint8_t *dest, const struct ustr *src, int strlen)
+-{
+-	if ( (!dest) || (!src) || (!strlen) || (src->u_len > strlen) )
+-		return 0;
+-	memcpy(dest+1, src->u_name, src->u_len);
+-	dest[0] = src->u_cmpID;
+-	return src->u_len + 1;
+-}
+-
+-int udf_ustr_to_char(uint8_t *dest, const struct ustr *src, int strlen)
+-{
+-	if ( (!dest) || (!src) || (!strlen) || (src->u_len >= strlen) )
+-		return 0;
+-	memcpy(dest, src->u_name, src->u_len);
+-	return src->u_len;
+-}
+-
+-int udf_ustr_to_dstring(dstring *dest, const struct ustr *src, int dlength)
+-{
+-	if ( udf_ustr_to_dchars(dest, src, dlength-1) )
+-	{
+-		dest[dlength-1] = src->u_len + 1;
+-		return dlength;
+-	}
+-	else
+-		return 0;
+-}
++static int udf_translate_to_linux(uint8_t *, uint8_t *, int, uint8_t *, int);
+ 
+-int udf_dchars_to_ustr(struct ustr *dest, const uint8_t *src, int strlen)
++static int udf_char_to_ustr(struct ustr *dest, const uint8_t *src, int strlen)
+ {
+-	if ( (!dest) || (!src) || (!strlen) || (strlen > UDF_NAME_LEN) )
+-		return 0;
+-	memset(dest, 0, sizeof(struct ustr));
+-	memcpy(dest->u_name, src+1, strlen-1);
+-	dest->u_cmpID = src[0];
+-	dest->u_len = strlen-1;
+-	return strlen-1;
+-}
+-
+-int udf_char_to_ustr(struct ustr *dest, const uint8_t *src, int strlen)
+-{
+-	if ( (!dest) || (!src) || (!strlen) || (strlen >= UDF_NAME_LEN) )
++	if ( (!dest) || (!src) || (!strlen) || (strlen > UDF_NAME_LEN-2) )
+ 		return 0;
+ 	memset(dest, 0, sizeof(struct ustr));
+ 	memcpy(dest->u_name, src, strlen);
+@@ -82,15 +45,6 @@
+ 	return strlen;
+ }
+ 
+-
+-int udf_dstring_to_ustr(struct ustr *dest, const dstring *src, int dlength)
+-{
+-	if ( dlength && udf_dchars_to_ustr(dest, src, src[dlength-1]) )
+-		return dlength;
+-	else
+-		return 0;
+-}
+-
+ /*
+  * udf_build_ustr
+  */
+@@ -112,7 +66,7 @@
+ /*
+  * udf_build_ustr_exact
+  */
+-int udf_build_ustr_exact(struct ustr *dest, dstring *ptr, int exactsize)
++static int udf_build_ustr_exact(struct ustr *dest, dstring *ptr, int exactsize)
+ {
+ 	if ( (!dest) || (!ptr) || (!exactsize) )
+ 		return -1;
+@@ -224,17 +178,17 @@
+  *	November 12, 1997 - Andrew E. Mileski
+  *	Written, tested, and released.
+  */
+-int udf_UTF8toCS0(dstring *ocu, struct ustr *utf, int length)
++static int udf_UTF8toCS0(dstring *ocu, struct ustr *utf, int length)
+ {
+ 	unsigned c, i, max_val, utf_char;
+-	int utf_cnt;
+-	int u_len = 0;
++	int utf_cnt, u_len;
+ 
+ 	memset(ocu, 0, sizeof(dstring) * length);
+ 	ocu[0] = 8;
+ 	max_val = 0xffU;
+ 
+ try_again:
++	u_len = 0U;
+ 	utf_char = 0U;
+ 	utf_cnt = 0U;
+ 	for (i = 0U; i < utf->u_len; i++)
+@@ -310,15 +264,15 @@
+ 	if (utf_cnt)
+ 	{
+ error_out:
+-		printk(KERN_ERR "udf: bad UTF-8 character\n");
+-		return 0;
++		ocu[++u_len] = '?';
++		printk(KERN_DEBUG "udf: bad UTF-8 character\n");
+ 	}
+ 
+ 	ocu[length - 1] = (uint8_t)u_len + 1;
+ 	return u_len + 1;
+ }
+ 
+-int udf_CS0toNLS(struct nls_table *nls, struct ustr *utf_o, struct ustr *ocu_i)
++static int udf_CS0toNLS(struct nls_table *nls, struct ustr *utf_o, struct ustr *ocu_i)
+ {
+ 	uint8_t *ocu;
+ 	uint32_t c;
+@@ -360,25 +314,25 @@
+ 	return utf_o->u_len;
+ }
+ 
+-int udf_NLStoCS0(struct nls_table *nls, dstring *ocu, struct ustr *uni, int length)
++static int udf_NLStoCS0(struct nls_table *nls, dstring *ocu, struct ustr *uni, int length)
+ {
+ 	unsigned len, i, max_val;
+ 	uint16_t uni_char;
+-	int uni_cnt;
+-	int u_len = 0;
++	int u_len;
+ 
+ 	memset(ocu, 0, sizeof(dstring) * length);
+ 	ocu[0] = 8;
+ 	max_val = 0xffU;
+ 
+ try_again:
+-	uni_char = 0U;
+-	uni_cnt = 0U;
++	u_len = 0U;
+ 	for (i = 0U; i < uni->u_len; i++)
+ 	{
+ 		len = nls->char2uni(&uni->u_name[i], uni->u_len-i, &uni_char);
++		if (len <= 0)
++			continue;
+ 
+-		if (len == 2 && max_val == 0xff)
++		if (uni_char > max_val)
+ 		{
+ 			max_val = 0xffffU;
+ 			ocu[0] = (uint8_t)0x10U;
+@@ -386,11 +340,9 @@
+ 		}
+ 		
+ 		if (max_val == 0xffffU)
+-		{
+ 			ocu[++u_len] = (uint8_t)(uni_char >> 8);
+-			i++;
+-		}
+ 		ocu[++u_len] = (uint8_t)(uni_char & 0xffU);
++		i += len - 1;
+ 	}
+ 
+ 	ocu[length - 1] = (uint8_t)u_len + 1;
+@@ -434,12 +386,42 @@
+ 	return 0;
+ }
+ 
++int udf_put_filename(struct super_block *sb, const uint8_t *sname, uint8_t *dname, int flen)
++{
++	struct ustr unifilename;
++	int namelen;
++
++	if ( !(udf_char_to_ustr(&unifilename, sname, flen)) )
++	{
++		return 0;
++	}
++
++	if (UDF_QUERY_FLAG(sb, UDF_FLAG_UTF8))
++	{
++		if ( !(namelen = udf_UTF8toCS0(dname, &unifilename, UDF_NAME_LEN)) )
++		{
++			return 0;
++		}
++	}
++	else if (UDF_QUERY_FLAG(sb, UDF_FLAG_NLS_MAP))
++	{
++		if ( !(namelen = udf_NLStoCS0(UDF_SB(sb)->s_nls_map, dname, &unifilename, UDF_NAME_LEN)) )
++		{
++			return 0;
++		}
++	}
++	else
++		return 0;
++
++	return namelen;
++}
++
+ #define ILLEGAL_CHAR_MARK	'_'
+ #define EXT_MARK			'.'
+ #define CRC_MARK			'#'
+ #define EXT_SIZE			5
+ 
+-int udf_translate_to_linux(uint8_t *newName, uint8_t *udfName, int udfLen, uint8_t *fidName, int fidNameLen)
++static int udf_translate_to_linux(uint8_t *newName, uint8_t *udfName, int udfLen, uint8_t *fidName, int fidNameLen)
+ {
+ 	int index, newIndex = 0, needsCRC = 0;	
+ 	int extIndex = 0, newExtIndex = 0, hasExt = 0;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/udf_fs.h linuxmips-2.4.30/include/linux/udf_fs.h
+--- linuxmips-2.4.30.ref/include/linux/udf_fs.h	2002-06-26 15:36:46.000000000 -0700
++++ linuxmips-2.4.30/include/linux/udf_fs.h	2007-05-10 10:49:29.000000000 -0700
+@@ -8,7 +8,7 @@
+  *  OSTA-UDF(tm) = Optical Storage Technology Association
+  *  Universal Disk Format.
+  *
+- *  This code is based on version 2.00 of the UDF specification,
++ *  This code is based on version 2.50 of the UDF specification,
+  *  and revision 3 of the ECMA 167 standard [equivalent to ISO 13346].
+  *    http://www.osta.org/ *    http://www.ecma.ch/
+  *    http://www.iso.org/
+@@ -24,13 +24,12 @@
+  *		ftp://prep.ai.mit.edu/pub/gnu/GPL
+  *	Each contributing author retains all rights to their own work.
+  *
+- *  (C) 1999-2000 Ben Fennema
++ *  (C) 1999-2004 Ben Fennema
+  *  (C) 1999-2000 Stelias Computing Inc
+  *
+  * HISTORY
+  *
+  */
+-#include <linux/config.h>
+ 
+ #ifndef _UDF_FS_H
+ #define _UDF_FS_H 1
+@@ -38,20 +37,11 @@
+ #define UDF_PREALLOCATE
+ #define UDF_DEFAULT_PREALLOC_BLOCKS	8
+ 
+-#define UDFFS_DATE			"2002/03/11"
+-#define UDFFS_VERSION			"0.9.6"
++#define UDFFS_DATE			"2005/21/07"
++#define UDFFS_VERSION			"0.9.9"
+ 
+-#if !defined(UDFFS_RW)
+-
+-#if defined(CONFIG_UDF_RW)
+-#define UDFFS_RW			1
+-#else /* !defined(CONFIG_UDF_RW) */
+-#define UDFFS_RW			0
+-#endif /* defined(CONFIG_UDF_RW) */
+-
+-#endif /* !defined(UDFFS_RW) */
+-
+-#define UDFFS_DEBUG
++//#define UDFFS_DEBUG
++#undef UDFFS_DEBU
+ 
+ #ifdef UDFFS_DEBUG
+ #define udf_debug(f, a...) \
+@@ -67,4 +57,16 @@
+ #define udf_info(f, a...) \
+ 		printk (KERN_INFO "UDF-fs INFO " f, ##a);
+ 
++#ifdef __KERNEL__
++
++#ifndef LINUX_VERSION_CODE
++#include <linux/version.h>
++#endif
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,3,0)
++extern int init_udf_fs(void);
++#endif /* 2.2.XX */
++
++#endif /* __KERNEL__ */
++
+ #endif /* _UDF_FS_H */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/udf_fs_i.h linuxmips-2.4.30/include/linux/udf_fs_i.h
+--- linuxmips-2.4.30.ref/include/linux/udf_fs_i.h	2002-06-26 15:36:46.000000000 -0700
++++ linuxmips-2.4.30/include/linux/udf_fs_i.h	2007-05-10 10:49:29.000000000 -0700
+@@ -20,33 +20,61 @@
+ 
+ #ifdef __KERNEL__
+ 
++#include <linux/version.h>
++
+ #ifndef _ECMA_167_H
+ typedef struct
+ {
+-	__u32 logicalBlockNum;
+-	__u16 partitionReferenceNum;
++	__u32			logicalBlockNum;
++	__u16			partitionReferenceNum;
+ } __attribute__ ((packed)) lb_addr;
++
++typedef struct
++{
++	__u32			extLength;
++	__u32			extPosition;
++} __attribute__ ((packed)) short_ad;
++
++typedef struct
++{
++	__u32			extLength;
++	lb_addr			extLocation;
++	__u8			impUse[6];
++} __attribute__ ((packed)) long_ad;
+ #endif
+ 
+ struct udf_inode_info
+ {
+-	long i_umtime;
+-	long i_uctime;
+-	long i_crtime;
+-	long i_ucrtime;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0)
++	struct timespec		i_crtime;
++#else
++	long			i_umtime;
++	long			i_uctime;
++	long			i_crtime;
++	long			i_ucrtime;
++#endif
+ 	/* Physical address of inode */
+-	lb_addr i_location;
+-	__u64 i_unique;
+-	__u32 i_lenEAttr;
+-	__u32 i_lenAlloc;
+-	__u64 i_lenExtents;
+-	__u32 i_next_alloc_block;
+-	__u32 i_next_alloc_goal;
+-	unsigned i_alloc_type : 3;
+-	unsigned i_extended_fe : 1;
+-	unsigned i_strat_4096 : 1;
+-	unsigned i_new_inode : 1;
+-	unsigned reserved : 26;
++	lb_addr			i_location;
++	__u64			i_unique;
++	__u32			i_lenEAttr;
++	__u32			i_lenAlloc;
++	__u64			i_lenExtents;
++	__u32			i_next_alloc_block;
++	__u32			i_next_alloc_goal;
++	unsigned		i_alloc_type : 3;
++	unsigned		i_efe : 1;
++	unsigned		i_use : 1;
++	unsigned		i_strat4096 : 1;
++	unsigned		reserved : 26;
++	union
++	{
++		short_ad	*i_sad;
++		long_ad		*i_lad;
++		__u8		*i_data;
++	} i_ext;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0)
++	struct inode vfs_inode;
++#endif
+ };
+ 
+ #endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/udf_fs_sb.h linuxmips-2.4.30/include/linux/udf_fs_sb.h
+--- linuxmips-2.4.30.ref/include/linux/udf_fs_sb.h	2002-06-26 15:36:46.000000000 -0700
++++ linuxmips-2.4.30/include/linux/udf_fs_sb.h	2007-05-10 10:49:29.000000000 -0700
+@@ -26,6 +26,20 @@
+ #define UDF_VIRTUAL_MAP15		0x1512U
+ #define UDF_VIRTUAL_MAP20		0x2012U
+ #define UDF_SPARABLE_MAP15		0x1522U
++#define UDF_METADATA_MAP25		0x2511U
++
++struct udf_meta_data
++{
++	__u32	s_meta_file_loc;
++	__u32	s_mirror_file_loc;
++	__u32	s_bitmap_file_loc;
++	__u32	s_alloc_unit_size;
++	__u16	s_align_unit_size;
++	__u8 	s_dup_md_flag;
++	struct inode *s_metadata_fe;
++	struct inode *s_mirror_fe;
++	struct inode *s_bitmap_fe;
++};
+ 
+ struct udf_sparing_data
+ {
+@@ -67,6 +81,7 @@
+ 	{
+ 		struct udf_sparing_data s_sparing;
+ 		struct udf_virtual_data s_virtual;
++		struct udf_meta_data s_metadata;
+ 	} s_type_specific;
+ 	__u32	(*s_partition_func)(struct super_block *, __u32, __u16, __u32);
+ 	__u16	s_volumeseqnum;
+@@ -97,7 +112,11 @@
+ 	uid_t			s_uid;
+ 
+ 	/* Root Info */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,0)
++	struct timespec		s_recordtime;
++#else
+ 	time_t			s_recordtime;
++#endif
+ 
+ 	/* Fileset Info */
+ 	__u16			s_serialnum;
+@@ -113,6 +132,11 @@
+ 
+ 	/* VAT inode */
+ 	struct inode		*s_vat;
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(2,2,6)
++	int			 s_rename_lock;
++	struct wait_queue 	*s_rename_wait;
++#endif
+ };
+ 
+ #endif /* _UDF_FS_SB_H */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1011.udf.patch linuxmips-2.4.30/README.1011.udf.patch
+--- linuxmips-2.4.30.ref/README.1011.udf.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1011.udf.patch	2007-05-10 10:51:26.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Newer UDF filesystem handler (0.9.9) to support UDF2.5, updated to support
++UDF2.6 as well.
++
++Prerequisite patch numbers:
++---------------------------
++none
++
++Primary author:
++---------------
++Sebastian Manciulea/YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

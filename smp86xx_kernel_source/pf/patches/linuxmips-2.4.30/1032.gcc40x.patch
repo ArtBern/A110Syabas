@@ -1,0 +1,318 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/mtd/chips/cfi_cmdset_0002.c linuxmips-2.4.30/drivers/mtd/chips/cfi_cmdset_0002.c
+--- linuxmips-2.4.30.ref/drivers/mtd/chips/cfi_cmdset_0002.c	2007-06-20 14:19:45.000000000 -0700
++++ linuxmips-2.4.30/drivers/mtd/chips/cfi_cmdset_0002.c	2007-06-20 14:21:18.000000000 -0700
+@@ -656,10 +656,15 @@
+ 
+ 	/* Write data */
+ 	for (z = 0; z < len; z += CFIDEV_BUSWIDTH) {
+-	    	if (cfi_buswidth_is_2())
+-			map->write16 (map, datum = *((__u16*)buf)++, adr+z);
+-		else if (cfi_buswidth_is_4())
+-		    	map->write32 (map, datum = *((__u32*)buf)++, adr+z);
++	    	if (cfi_buswidth_is_2()) {
++			datum = *((__u16*)buf);
++			buf += sizeof(__u16);
++			map->write16 (map, datum, adr+z);
++		} else if (cfi_buswidth_is_4()) {
++		    	datum = *((__u32*)buf);
++			buf += sizeof(__u32);
++		    	map->write32 (map, datum, adr+z);
++		}
+ 	}
+ 
+ 	/* start program */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/usb/host/ehci-q.c linuxmips-2.4.30/drivers/usb/host/ehci-q.c
+--- linuxmips-2.4.30.ref/drivers/usb/host/ehci-q.c	2005-01-13 02:59:03.000000000 -0800
++++ linuxmips-2.4.30/drivers/usb/host/ehci-q.c	2007-06-20 14:21:18.000000000 -0700
+@@ -193,14 +193,16 @@
+ 	}
+ }
+ 
++#ifdef	INTR_AUTOMAGIC
++static int ehci_urb_enqueue (struct usb_hcd *, struct urb *, int);
++#endif
++
+ static void
+ ehci_urb_done (struct ehci_hcd *ehci, struct urb *urb, struct pt_regs *regs)
+ {
+ #ifdef	INTR_AUTOMAGIC
+ 	struct urb		*resubmit = 0;
+ 	struct usb_device	*dev = 0;
+-
+-	static int ehci_urb_enqueue (struct usb_hcd *, struct urb *, int);
+ #endif
+ 
+ 	if (likely (urb->hcpriv != 0)) {
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/usb/inode.c linuxmips-2.4.30/drivers/usb/inode.c
+--- linuxmips-2.4.30.ref/drivers/usb/inode.c	2004-02-19 17:22:18.000000000 -0800
++++ linuxmips-2.4.30/drivers/usb/inode.c	2007-06-20 14:21:21.000000000 -0700
+@@ -495,11 +495,15 @@
+ 	lookup: usbdevfs_root_lookup,
+ };
+ 
+-static struct file_operations usbdevfs_bus_file_operations = {
++//static struct file_operations usbdevfs_bus_file_operations 
++struct file_operations usbdevfs_bus_file_operations 
++= {
+ 	readdir: usbdevfs_bus_readdir,
+ };
+ 
+-static struct inode_operations usbdevfs_bus_inode_operations = {
++//static struct inode_operations usbdevfs_bus_inode_operations 
++struct inode_operations usbdevfs_bus_inode_operations
++= {
+ 	lookup: usbdevfs_bus_lookup,
+ };
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/checksum.h linuxmips-2.4.30/include/asm-mips/checksum.h
+--- linuxmips-2.4.30.ref/include/asm-mips/checksum.h	2004-04-23 14:00:53.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/checksum.h	2007-06-20 14:21:21.000000000 -0700
+@@ -45,7 +45,7 @@
+ 						  int len, int sum,
+ 						  int *err_ptr)
+ {
+-	sum = csum_partial(src, len, sum);
++	sum = csum_partial((const unsigned char *)src, len, sum);
+ 
+ 	if (copy_to_user(dst, src, len)) {
+ 		*err_ptr = -EFAULT;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/tango2/rmdefs.h linuxmips-2.4.30/include/asm-mips/tango2/rmdefs.h
+--- linuxmips-2.4.30.ref/include/asm-mips/tango2/rmdefs.h	2007-06-20 14:19:45.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/tango2/rmdefs.h	2007-06-20 14:21:21.000000000 -0700
+@@ -5,10 +5,18 @@
+ #ifndef __ASSEMBLY__
+ 
+ #ifndef __RMBTYPES_H__
++#ifndef RMuint32
+ typedef unsigned long RMuint32;
++#endif
++#ifndef RMuint16
+ typedef unsigned short RMuint16;
++#endif
++#ifndef RMuint8
+ typedef unsigned char RMuint8;
++#endif
++#ifndef RMascii
+ typedef char RMascii;
++#endif
+ struct gbus;
+ #ifndef pGBus
+ #define pGBus ((struct gbus *)1)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/uaccess.h linuxmips-2.4.30/include/asm-mips/uaccess.h
+--- linuxmips-2.4.30.ref/include/asm-mips/uaccess.h	2004-10-20 16:40:04.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/uaccess.h	2007-06-20 14:21:21.000000000 -0700
+@@ -168,8 +168,13 @@
+  * Returns zero on success, or -EFAULT on error.
+  * On error, the variable @x is set to zero.
+  */
++#if 0
+ #define get_user(x,ptr) \
+ 	__get_user_check((__typeof__(*(ptr)))(x),(ptr),sizeof(*(ptr)))
++#else
++#define get_user(x,ptr) \
++	__get_user_check((x),(ptr),sizeof(*(ptr)))
++#endif
+ 
+ /*
+  * __put_user: - Write a simple value into user space, with less checking.
+@@ -213,8 +218,13 @@
+  * Returns zero on success, or -EFAULT on error.
+  * On error, the variable @x is set to zero.
+  */
++#if 0
+ #define __get_user(x,ptr) \
+ 	__get_user_nocheck((__typeof__(*(ptr)))(x),(ptr),sizeof(*(ptr)))
++#else
++#define __get_user(x,ptr) \
++	__get_user_nocheck((x),(ptr),sizeof(*(ptr)))
++#endif
+ 
+ struct __large_struct { unsigned long buf[100]; };
+ #define __m(x) (*(struct __large_struct *)(x))
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/byteorder/swab.h linuxmips-2.4.30/include/linux/byteorder/swab.h
+--- linuxmips-2.4.30.ref/include/linux/byteorder/swab.h	2002-09-11 05:45:40.000000000 -0700
++++ linuxmips-2.4.30/include/linux/byteorder/swab.h	2007-06-20 14:21:21.000000000 -0700
+@@ -156,7 +156,8 @@
+ #endif /* OPTIMIZE */
+ 
+ 
+-static __inline__ __const__ __u16 __fswab16(__u16 x)
++//static __inline__ __const__ __u16 __fswab16(__u16 x)
++static __inline__ __u16 __fswab16(__u16 x)
+ {
+ 	return __arch__swab16(x);
+ }
+@@ -169,7 +170,8 @@
+ 	__arch__swab16s(addr);
+ }
+ 
+-static __inline__ __const__ __u32 __fswab24(__u32 x)
++//static __inline__ __const__ __u32 __fswab24(__u32 x)
++static __inline__ __u32 __fswab24(__u32 x)
+ {
+ 	return __arch__swab24(x);
+ }
+@@ -182,7 +184,8 @@
+ 	__arch__swab24s(addr);
+ }
+ 
+-static __inline__ __const__ __u32 __fswab32(__u32 x)
++//static __inline__ __const__ __u32 __fswab32(__u32 x)
++static __inline__ __u32 __fswab32(__u32 x)
+ {
+ 	return __arch__swab32(x);
+ }
+@@ -196,7 +199,8 @@
+ }
+ 
+ #ifdef __BYTEORDER_HAS_U64__
+-static __inline__ __const__ __u64 __fswab64(__u64 x)
++//static __inline__ __const__ __u64 __fswab64(__u64 x)
++static __inline__ __u64 __fswab64(__u64 x)
+ {
+ #  ifdef __SWAB_64_THRU_32__
+ 	__u32 h = x >> 32;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/skbuff.h linuxmips-2.4.30/include/linux/skbuff.h
+--- linuxmips-2.4.30.ref/include/linux/skbuff.h	2005-03-18 04:13:31.000000000 -0800
++++ linuxmips-2.4.30/include/linux/skbuff.h	2007-06-20 14:21:21.000000000 -0700
+@@ -825,7 +825,8 @@
+ 	skb->len-=len;
+ 	if (skb->len < skb->data_len)
+ 		out_of_line_bug();
+-	return 	skb->data+=len;
++	skb->data+=len;
++	return (char *)skb->data;
+ }
+ 
+ /**
+@@ -843,7 +844,7 @@
+ {	
+ 	if (len > skb->len)
+ 		return NULL;
+-	return __skb_pull(skb,len);
++	return (unsigned char *)__skb_pull(skb,len);
+ }
+ 
+ extern unsigned char * __pskb_pull_tail(struct sk_buff *skb, int delta);
+@@ -854,14 +855,15 @@
+ 	    __pskb_pull_tail(skb, len-skb_headlen(skb)) == NULL)
+ 		return NULL;
+ 	skb->len -= len;
+-	return 	skb->data += len;
++	skb->data += len;
++	return (char *)skb->data;
+ }
+ 
+ static inline unsigned char * pskb_pull(struct sk_buff *skb, unsigned int len)
+ {	
+ 	if (len > skb->len)
+ 		return NULL;
+-	return __pskb_pull(skb,len);
++	return (unsigned char *)__pskb_pull(skb,len);
+ }
+ 
+ static inline int pskb_may_pull(struct sk_buff *skb, unsigned int len)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/net/icmp.h linuxmips-2.4.30/include/net/icmp.h
+--- linuxmips-2.4.30.ref/include/net/icmp.h	2001-06-13 10:28:17.000000000 -0700
++++ linuxmips-2.4.30/include/net/icmp.h	2007-06-20 14:21:21.000000000 -0700
+@@ -23,6 +23,7 @@
+ 
+ #include <net/sock.h>
+ #include <net/protocol.h>
++#include <net/snmp.h>
+ 
+ struct icmp_err {
+   int		errno;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/net/ipv6.h linuxmips-2.4.30/include/net/ipv6.h
+--- linuxmips-2.4.30.ref/include/net/ipv6.h	2004-11-18 16:28:51.000000000 -0800
++++ linuxmips-2.4.30/include/net/ipv6.h	2007-06-20 14:21:21.000000000 -0700
+@@ -19,6 +19,7 @@
+ #include <asm/hardirq.h>
+ #include <net/ndisc.h>
+ #include <net/flow.h>
++#include <net/snmp.h>
+ 
+ #define SIN6_LEN_RFC2133	24
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/init/do_mounts.c linuxmips-2.4.30/init/do_mounts.c
+--- linuxmips-2.4.30.ref/init/do_mounts.c	2007-06-20 14:19:45.000000000 -0700
++++ linuxmips-2.4.30/init/do_mounts.c	2007-06-20 14:21:21.000000000 -0700
+@@ -51,7 +51,7 @@
+ int __initdata rd_doload;	/* 1 = load RAM disk, 0 = don't load */
+ 
+ int root_mountflags = MS_RDONLY | MS_VERBOSE;
+-static char root_device_name[64];
++char root_device_name[64];
+ 
+ /* this is initialized in init/main.c */
+ kdev_t ROOT_DEV;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/kernel/module.c linuxmips-2.4.30/kernel/module.c
+--- linuxmips-2.4.30.ref/kernel/module.c	2007-06-20 14:20:02.000000000 -0700
++++ linuxmips-2.4.30/kernel/module.c	2007-06-20 14:21:21.000000000 -0700
+@@ -725,11 +725,12 @@
+ 
+ 	if (mod == &kernel_module)
+ 		return -EINVAL;
+-	if (!MOD_CAN_QUERY(mod))
++	if (!MOD_CAN_QUERY(mod)) {
+ 		if (put_user(0, ret))
+ 			return -EFAULT;
+ 		else
+ 			return 0;
++	}
+ 
+ 	space = 0;
+ 	for (i = 0; i < mod->ndeps; ++i) {
+@@ -769,11 +770,12 @@
+ 
+ 	if (mod == &kernel_module)
+ 		return -EINVAL;
+-	if (!MOD_CAN_QUERY(mod))
++	if (!MOD_CAN_QUERY(mod)) {
+ 		if (put_user(0, ret))
+ 			return -EFAULT;
+ 		else
+ 			return 0;
++	}
+ 
+ 	space = 0;
+ 	for (nrefs = 0, ref = mod->refs; ref ; ++nrefs, ref = ref->next_ref) {
+@@ -813,11 +815,12 @@
+ 	char *strings;
+ 	unsigned long *vals;
+ 
+-	if (!MOD_CAN_QUERY(mod))
++	if (!MOD_CAN_QUERY(mod)) {
+ 		if (put_user(0, ret))
+ 			return -EFAULT;
+ 		else
+ 			return 0;
++	}
+ 
+ 	space = mod->nsyms * 2*sizeof(void *);
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1032.gcc40x.patch linuxmips-2.4.30/README.1032.gcc40x.patch
+--- linuxmips-2.4.30.ref/README.1032.gcc40x.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1032.gcc40x.patch	2007-06-20 14:23:52.000000000 -0700
+@@ -0,0 +1,21 @@
++Feature:
++--------
++Support GCC 4.0.x compiler.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++1009
++1024
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP86xx xx=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

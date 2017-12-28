@@ -1,0 +1,991 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/mtd/chips/cfi_cmdset_0002.c linuxmips-2.4.30/drivers/mtd/chips/cfi_cmdset_0002.c
+--- linuxmips-2.4.30.ref/drivers/mtd/chips/cfi_cmdset_0002.c	2004-11-18 16:28:39.000000000 -0800
++++ linuxmips-2.4.30/drivers/mtd/chips/cfi_cmdset_0002.c	2006-08-22 15:10:17.000000000 -0700
+@@ -18,6 +18,7 @@
+ #include <linux/sched.h>
+ #include <asm/io.h>
+ #include <asm/byteorder.h>
++#include <asm/unaligned.h>
+ 
+ #include <linux/errno.h>
+ #include <linux/slab.h>
+@@ -29,7 +30,8 @@
+ #define AMD_BOOTLOC_BUG
+ 
+ static int cfi_amdstd_read (struct mtd_info *, loff_t, size_t, size_t *, u_char *);
+-static int cfi_amdstd_write(struct mtd_info *, loff_t, size_t, size_t *, const u_char *);
++static int cfi_amdstd_write_words(struct mtd_info *, loff_t, size_t, size_t *, const u_char *);
++static int cfi_amdstd_write_buffers(struct mtd_info *, loff_t, size_t, size_t *, const u_char *);
+ static int cfi_amdstd_erase_chip(struct mtd_info *, struct erase_info *);
+ static int cfi_amdstd_erase_onesize(struct mtd_info *, struct erase_info *);
+ static int cfi_amdstd_erase_varsize(struct mtd_info *, struct erase_info *);
+@@ -223,7 +225,19 @@
+ 		else
+ 			mtd->erase = cfi_amdstd_erase_onesize;
+ 		mtd->read = cfi_amdstd_read;
+-		mtd->write = cfi_amdstd_write;
++#if 1
++		if( cfi->cfiq->BufWriteTimeoutTyp ) 
++		{
++		    printk( "Using buffer write method\n" );
++		    mtd->write = cfi_amdstd_write_buffers;
++		} else {
++#endif
++		    printk( "Using word write method\n" );
++		    mtd->write = cfi_amdstd_write_words;
++#if 1
++		}
++#endif
++
+ 		break;
+ 
+ 	default:
+@@ -232,7 +246,7 @@
+ 		break;
+ 	}
+ 	if (cfi->fast_prog) {
+-		/* In cfi_amdstd_write() we frob the protection stuff
++		/* In cfi_amdstd_write_words() we frob the protection stuff
+ 		   without paying any attention to the state machine.
+ 		   This upsets in-progress erases. So we turn this flag
+ 		   off for now till the code gets fixed. */
+@@ -461,6 +475,11 @@
+ 	unsigned int dq6, dq5;	
+ 	struct cfi_private *cfi = map->fldrv_priv;
+ 	DECLARE_WAITQUEUE(wait, current);
++	int ret = 0;
++#ifdef CONFIG_TANGO2
++	unsigned int newv, oldv;
++	unsigned int mask = ((cfi_buswidth_is_2()) ? 0xffff : 0xff);
++#endif
+ 
+  retry:
+ 	cfi_spin_lock(chip->mutex);
+@@ -487,6 +506,12 @@
+ 	}	
+ 
+ 	chip->state = FL_WRITING;
++#ifdef CONFIG_TANGO2
++	if (adr == 0)
++		oldv = datum;
++	else
++		oldv = *(volatile unsigned int *)map->map_priv_1;
++#endif
+ 
+ 	adr += chip->start;
+ 	ENABLE_VPP(map);
+@@ -510,15 +535,28 @@
+ 	   or tells us why it failed. */        
+ 	dq6 = CMD(1<<6);
+ 	dq5 = CMD(1<<5);
+-	timeo = jiffies + (HZ/1000); /* setting timeout to 1ms for now */
+ 		
+-	oldstatus = cfi_read(map, adr);
+-	status = cfi_read(map, adr);
+-
+-	while( (status & dq6) != (oldstatus & dq6) && 
+-	       (status & dq5) != dq5 &&
+-	       !time_after(jiffies, timeo) ) {
++	timeo = jiffies + ((((chip->word_write_time << cfi->cfiq->WordWriteTimeoutMax) * HZ) / 1000000) == 0 ? 
++			(HZ/10) /* setting timeout to 100ms */ :
++			(((chip->word_write_time << cfi->cfiq->WordWriteTimeoutMax) * HZ) / 1000000) + 1); 
++
++	/*
++	 * some toshiba flash acts weird with the toggle bits, so
++	 * we check the datum as well
++	 */
++	do {
++		oldstatus = cfi_read( map, adr );
++		status = cfi_read( map, adr );
++#ifdef CONFIG_TANGO2
++		newv = *(volatile unsigned int *)map->map_priv_1;
++		if ((oldv & mask) == (newv & mask)) {
++#endif
++			if (!((status != datum || ((status & dq6) != (oldstatus & dq6) && (status & dq5) != dq5))))
++				break;
+ 
++#ifdef CONFIG_TANGO2
++		}
++#endif
+ 		if (need_resched()) {
+ 			cfi_spin_unlock(chip->mutex);
+ 			yield();
+@@ -526,9 +564,7 @@
+ 		} else 
+ 			udelay(1);
+ 
+-		oldstatus = cfi_read( map, adr );
+-		status = cfi_read( map, adr );
+-	}
++	} while( !time_after(jiffies, timeo) );
+ 	
+ 	if( (status & dq6) != (oldstatus & dq6) ) {
+ 		/* The erasing didn't stop?? */
+@@ -553,7 +589,7 @@
+ 			wake_up(&chip->wq);
+ 			cfi_spin_unlock(chip->mutex);
+ 			DISABLE_VPP(map);
+-			return -EIO;
++			ret = -EIO;
+ 		}
+ 	}
+ 
+@@ -562,10 +598,145 @@
+ 	wake_up(&chip->wq);
+ 	cfi_spin_unlock(chip->mutex);
+ 
+-	return 0;
++	return ret;
++}
++
++static inline int do_write_buffer(struct map_info *map, struct flchip *chip, 
++				  unsigned long adr, const u_char *buf, int len)
++{
++	unsigned long timeo = jiffies + HZ;
++	unsigned int status;
++	unsigned int dq7, dq5, dq1;	
++	struct cfi_private *cfi = map->fldrv_priv;
++	DECLARE_WAITQUEUE(wait, current);
++	int ret = 0;
++	int z;
++	__u32 datum = 0;
++#ifdef CONFIG_TANGO2
++	unsigned int newv, oldv;
++	unsigned int mask = ((cfi_buswidth_is_2()) ? 0xffff : 0xff);
++#endif
++	
++	if( (!cfi_buswidth_is_2() && !cfi_buswidth_is_4()) ||
++	    !len || (len % CFIDEV_BUSWIDTH) )
++	    	return -EINVAL;
++	
++ retry:
++	cfi_spin_lock(chip->mutex);
++
++	if (chip->state != FL_READY) {
++		set_current_state(TASK_UNINTERRUPTIBLE);
++		add_wait_queue(&chip->wq, &wait);
++                
++		cfi_spin_unlock(chip->mutex);
++
++		schedule();
++		remove_wait_queue(&chip->wq, &wait);
++		timeo = jiffies + HZ;
++
++		goto retry;
++	}	
++
++	chip->state = FL_WRITING_TO_BUFFER;
++#ifdef CONFIG_TANGO2
++	if (adr == 0)
++		oldv = get_unaligned((__u32*)buf);
++	else
++		oldv = *(volatile unsigned int *)map->map_priv_1;
++#endif
++
++	adr += chip->start;
++	ENABLE_VPP(map);
++
++	/* write buffers algorithm taken from Am29LV641MH/L manual */
++	cfi_send_gen_cmd(0xAA, cfi->addr_unlock1, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
++	cfi_send_gen_cmd(0x55, cfi->addr_unlock2, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
++	cfi_write(map, CMD(0x25), adr);
++	cfi_write(map, CMD(len/CFIDEV_BUSWIDTH-1), adr); /* word count */
++
++	/* Write data */
++	for (z = 0; z < len; z += CFIDEV_BUSWIDTH) {
++	    	if (cfi_buswidth_is_2())
++			map->write16 (map, datum = *((__u16*)buf)++, adr+z);
++		else if (cfi_buswidth_is_4())
++		    	map->write32 (map, datum = *((__u32*)buf)++, adr+z);
++	}
++
++	/* start program */
++	cfi_write(map, CMD(0x29), adr);
++
++	cfi_spin_unlock(chip->mutex);
++	cfi_udelay(chip->buffer_write_time);
++	cfi_spin_lock(chip->mutex);
++
++	/* use data polling algorithm */
++	dq1 = CMD(1<<1);
++	dq5 = CMD(1<<5);
++	dq7 = CMD(1<<7);
++
++	timeo = jiffies + ((((chip->buffer_write_time << cfi->cfiq->BufWriteTimeoutMax) * HZ) / 1000000) == 0 ? 
++			(HZ/10) /* setting timeout to 100ms */ :
++			(((chip->buffer_write_time << cfi->cfiq->BufWriteTimeoutMax) * HZ) / 1000000) + 1); 
++
++	z -= CFIDEV_BUSWIDTH;	/* go to last written address */
++	do {
++	    	status = cfi_read(map, adr+z);
++
++#ifdef CONFIG_TANGO2
++		newv = *(volatile unsigned int *)map->map_priv_1;
++		if ((oldv & mask) == (newv & mask)) {
++#endif
++		    	if( (dq7 & status) == (dq7 & datum) )
++				break;
++	    		if( ((dq5 & status) == dq5) ||
++		    		((dq1 & status) == dq1) ) {
++				status = cfi_read( map, adr+z );
++				if( (dq7 & status) != (dq7 & datum) )
++				{
++		    			ret = -EIO;
++					break;
++				} else break;
++	    		}
++#ifdef CONFIG_TANGO2
++	    	}
++#endif
++
++		if (need_resched()) {
++		    cfi_spin_unlock(chip->mutex);
++		    	yield();
++			cfi_spin_lock(chip->mutex);
++		} else 
++		    	udelay(1);
++
++	} while( !time_after(jiffies, timeo) );
++
++	if( !ret && time_after( jiffies, timeo ) )
++	{
++	    	printk(KERN_WARNING "Waiting for write to complete timed out in do_write_buffer.");        
++	    	ret = -EIO;
++	}
++
++	if( ret == -EIO ) {
++	    	if( (dq1 & status) == dq1 ) {
++		    	printk( "Flash write to Buffer aborted @ 0x%lx = 0x%x\n", adr, status );
++			cfi_send_gen_cmd(0xAA, cfi->addr_unlock1, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
++			cfi_send_gen_cmd(0x55, cfi->addr_unlock2, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
++			cfi_send_gen_cmd(0xF0, cfi->addr_unlock1, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
++		} else {
++		    	printk( "Flash write to buffer failed @ 0x%lx = 0x%x\n", adr, status );
++			cfi_write(map, CMD(0xF0), chip->start);
++		}
++	}
++
++	DISABLE_VPP(map);
++	chip->state = FL_READY;
++	wake_up(&chip->wq);
++	cfi_spin_unlock(chip->mutex);
++
++	return ret;
+ }
+ 
+-static int cfi_amdstd_write (struct mtd_info *mtd, loff_t to , size_t len, size_t *retlen, const u_char *buf)
++static int cfi_amdstd_write_words (struct mtd_info *mtd, loff_t to , size_t len, size_t *retlen, const u_char *buf)
+ {
+ 	struct map_info *map = mtd->priv;
+ 	struct cfi_private *cfi = map->fldrv_priv;
+@@ -632,9 +803,9 @@
+ 		if (cfi_buswidth_is_1()) {
+ 			datum = *(__u8*)buf;
+ 		} else if (cfi_buswidth_is_2()) {
+-			datum = *(__u16*)buf;
++			datum = get_unaligned((__u16*)buf);
+ 		} else if (cfi_buswidth_is_4()) {
+-			datum = *(__u32*)buf;
++			datum = get_unaligned((__u32*)buf);
+ 		} else {
+ 			return -EINVAL;
+ 		}
+@@ -710,6 +881,82 @@
+ 	return 0;
+ }
+ 
++static int cfi_amdstd_write_buffers (struct mtd_info *mtd, loff_t to , size_t len, size_t *retlen, const u_char *buf)
++{
++	struct map_info *map = mtd->priv;
++	struct cfi_private *cfi = map->fldrv_priv;
++	int wbufsize = CFIDEV_INTERLEAVE << cfi->cfiq->MaxBufWriteSize;
++	int ret = 0;
++	int chipnum;
++	unsigned long ofs;
++	
++	/* code derived from cfi_cmdset_0001.c:cfi_intelext_write_words */
++	*retlen = 0;
++	if (!len)
++		return 0;
++
++	chipnum = to >> cfi->chipshift;
++	ofs = to  - (chipnum << cfi->chipshift);
++
++	/* If it's not bus-aligned, do the first word write */
++	if (ofs & (CFIDEV_BUSWIDTH-1)) {
++		size_t local_len = (-ofs)&(CFIDEV_BUSWIDTH-1);
++		if (local_len > len)
++			local_len = len;
++		ret = cfi_amdstd_write_words(mtd, to, local_len,
++					     retlen, buf);
++		if (ret)
++			return ret;
++		ofs += local_len;
++		buf += local_len;
++		len -= local_len;
++
++		if (ofs >> cfi->chipshift) {
++			chipnum ++;
++			ofs = 0;
++			if (chipnum == cfi->numchips)
++				return 0;
++		}
++	}
++
++	/* Write buffer is worth it only if more than one word to write... */
++	while(len > CFIDEV_BUSWIDTH) {
++		/* We must not cross write block boundaries */
++		int size = wbufsize - (ofs & (wbufsize-1));
++
++		if (size > len)
++			size = len & ~(CFIDEV_BUSWIDTH-1);
++		ret = do_write_buffer(map, &cfi->chips[chipnum], 
++				      ofs, buf, size);
++		if (ret)
++			return ret;
++
++		ofs += size;
++		buf += size;
++		(*retlen) += size;
++		len -= size;
++
++		if (ofs >> cfi->chipshift) {
++			chipnum ++; 
++			ofs = 0;
++			if (chipnum == cfi->numchips)
++				return 0;
++		}
++	}
++
++	/* ... and write the remaining bytes */
++	if (len > 0) {
++		size_t local_retlen;
++		ret = cfi_amdstd_write_words(mtd, ofs + (chipnum << cfi->chipshift),
++					     len, &local_retlen, buf);
++		if (ret)
++			return ret;
++		(*retlen) += local_retlen;
++	}
++
++	return 0;
++}
++
+ static inline int do_erase_chip(struct map_info *map, struct flchip *chip)
+ {
+ 	unsigned int oldstatus, status;
+@@ -718,6 +965,11 @@
+ 	unsigned int adr;
+ 	struct cfi_private *cfi = map->fldrv_priv;
+ 	DECLARE_WAITQUEUE(wait, current);
++#ifdef CONFIG_TANGO2
++	unsigned int newv;
++	const unsigned int oldv = 0xffffffff;
++	unsigned int mask = ((cfi_buswidth_is_2()) ? 0xffff : 0xff);
++#endif
+ 
+  retry:
+ 	cfi_spin_lock(chip->mutex);
+@@ -751,7 +1003,16 @@
+ 	cfi_send_gen_cmd(0xAA, cfi->addr_unlock1, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
+ 	cfi_send_gen_cmd(0x55, cfi->addr_unlock2, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
+ 	cfi_send_gen_cmd(0x10, cfi->addr_unlock1, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
+-	timeo = jiffies + (HZ*20);
++
++	if ((cfi->cfiq->ChipEraseTimeoutTyp == 0) || (cfi->cfiq->ChipEraseTimeoutMax == 0)) {
++		int j, nblks;
++		for (j = nblks = 0; j < cfi->cfiq->NumEraseRegions; j++) 
++			nblks += (cfi->cfiq->EraseRegionInfo[j] & 0xffff) + 1;
++		timeo = jiffies + ((nblks * cfi->cfiq->BlockEraseTimeoutMax * HZ) / 1000) + 1;
++	} else {
++		timeo = jiffies + (((cfi->cfiq->ChipEraseTimeoutTyp << cfi->cfiq->ChipEraseTimeoutMax) * HZ) / 1000) + 1; 
++	}
++
+ 	adr = cfi->addr_unlock1;
+ 
+ 	/* Wait for the end of programing/erasure by using the toggle method.
+@@ -766,13 +1027,21 @@
+ 	dq6 = CMD(1<<6);
+ 	dq5 = CMD(1<<5);
+ 
+-	oldstatus = cfi_read(map, adr);
+-	status = cfi_read(map, adr);
+-	while( ((status & dq6) != (oldstatus & dq6)) && 
+-		((status & dq5) != dq5) &&
+-		!time_after(jiffies, timeo)) {
++	do {
+ 		int wait_reps;
+ 
++		oldstatus = cfi_read(map, adr);
++		status = cfi_read(map, adr);
++#ifdef CONFIG_TANGO2
++		newv = *(volatile unsigned int *)map->map_priv_1;
++		if ((oldv & mask) == (newv & mask)) {
++#endif
++			if (!(((status & dq6) != (oldstatus & dq6)) && ((status & dq5) != dq5)))
++				break;
++#ifdef CONFIG_TANGO2
++		}
++#endif
++
+ 		/* an initial short sleep */
+ 		cfi_spin_unlock(chip->mutex);
+ 		schedule_timeout(HZ/100);
+@@ -813,9 +1082,8 @@
+ 			oldstatus = cfi_read(map, adr);
+ 			status = cfi_read(map, adr);
+ 		}
+-		oldstatus = cfi_read(map, adr);
+-		status = cfi_read(map, adr);
+-	}
++	} while( !time_after(jiffies, timeo) );
++
+ 	if ((status & dq6) != (oldstatus & dq6)) {
+ 		/* The erasing didn't stop?? */
+ 		if ((status & dq5) == dq5) {
+@@ -844,6 +1112,10 @@
+ 	unsigned long timeo = jiffies + HZ;
+ 	struct cfi_private *cfi = map->fldrv_priv;
+ 	DECLARE_WAITQUEUE(wait, current);
++#ifdef CONFIG_TANGO2
++	unsigned int oldv, newv;
++	unsigned int mask = ((cfi_buswidth_is_2()) ? 0xffff : 0xff);
++#endif
+ 
+  retry:
+ 	cfi_spin_lock(chip->mutex);
+@@ -866,6 +1138,12 @@
+ 	}	
+ 
+ 	chip->state = FL_ERASING;
++#ifdef CONFIG_TANGO2
++	if (adr == 0)
++		oldv = 0xffffffff;
++	else
++		oldv = *(volatile unsigned int *)map->map_priv_1;
++#endif
+ 
+ 	adr += chip->start;
+ 	ENABLE_VPP(map);
+@@ -876,7 +1154,9 @@
+ 	cfi_send_gen_cmd(0x55, cfi->addr_unlock2, chip->start, map, cfi, CFI_DEVICETYPE_X8, NULL);
+ 	cfi_write(map, CMD(0x30), adr);
+ 	
+-	timeo = jiffies + (HZ*20);
++	timeo = jiffies + ((((chip->erase_time << cfi->cfiq->BlockEraseTimeoutMax) * HZ) / 1000) == 0 ? 
++			(HZ*20) :
++			(((chip->erase_time << cfi->cfiq->BlockEraseTimeoutMax) * HZ) / 1000) + 1); 
+ 
+ 	/* Wait for the end of programing/erasure by using the toggle method.
+ 	 * As long as there is a programming procedure going on, bit 6 of the last
+@@ -890,13 +1170,20 @@
+ 	dq6 = CMD(1<<6);
+ 	dq5 = CMD(1<<5);
+ 
+-	oldstatus = cfi_read(map, adr);
+-	status = cfi_read(map, adr);
+-	while( ((status & dq6) != (oldstatus & dq6)) && 
+-		((status & dq5) != dq5) &&
+-		!time_after(jiffies, timeo)) {
++	do {
+ 		int wait_reps;
+ 
++		oldstatus = cfi_read(map, adr);
++		status = cfi_read(map, adr);
++#ifdef CONFIG_TANGO2
++		newv = *(volatile unsigned int *)map->map_priv_1;
++		if ((oldv & mask) == (newv & mask)) {
++#endif
++			if (!(((status & dq6) != (oldstatus & dq6)) && ((status & dq5) != dq5))) 
++				break;
++#ifdef CONFIG_TANGO2
++		}
++#endif
+ 		/* an initial short sleep */
+ 		cfi_spin_unlock(chip->mutex);
+ 		schedule_timeout(HZ/100);
+@@ -937,9 +1224,8 @@
+ 			oldstatus = cfi_read(map, adr);
+ 			status = cfi_read(map, adr);
+ 		}
+-		oldstatus = cfi_read(map, adr);
+-		status = cfi_read(map, adr);
+-	}
++	} while( !time_after(jiffies, timeo) );
++
+ 	if( (status & dq6) != (oldstatus & dq6) ) 
+ 	{                                       
+ 		/* The erasing didn't stop?? */
+@@ -1068,7 +1354,7 @@
+ 	instr->state = MTD_ERASE_DONE;
+ 	if (instr->callback)
+ 		instr->callback(instr);
+-	
++
+ 	return 0;
+ }
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/mtd/Config.in linuxmips-2.4.30/drivers/mtd/Config.in
+--- linuxmips-2.4.30.ref/drivers/mtd/Config.in	2003-02-25 16:53:49.000000000 -0800
++++ linuxmips-2.4.30/drivers/mtd/Config.in	2006-08-22 15:10:17.000000000 -0700
+@@ -14,7 +14,9 @@
+    dep_tristate '  MTD partitioning support' CONFIG_MTD_PARTITIONS $CONFIG_MTD
+    dep_tristate '  MTD concatenating support' CONFIG_MTD_CONCAT $CONFIG_MTD
+    dep_tristate '  RedBoot partition table parsing' CONFIG_MTD_REDBOOT_PARTS $CONFIG_MTD_PARTITIONS
+-   dep_tristate '  Command line partition table parsing' CONFIG_MTD_CMDLINE_PARTS $CONFIG_MTD_PARTITIONS
++   if [ ! "$CONFIG_TANGO2_SIG_BLOCK" = "y" -a ! "$CONFIG_TANGO2_XENV" = "y" ]; then
++       dep_tristate '  Command line partition table parsing' CONFIG_MTD_CMDLINE_PARTS $CONFIG_MTD_PARTITIONS
++   fi
+    if [ "$CONFIG_ARM" = "y" ]; then
+       dep_tristate '  ARM Firmware Suite partition parsing' CONFIG_MTD_AFS_PARTS $CONFIG_MTD_PARTITIONS
+    fi
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/mtd/maps/Config.in linuxmips-2.4.30/drivers/mtd/maps/Config.in
+--- linuxmips-2.4.30.ref/drivers/mtd/maps/Config.in	2004-02-25 16:46:35.000000000 -0800
++++ linuxmips-2.4.30/drivers/mtd/maps/Config.in	2006-08-22 15:10:17.000000000 -0700
+@@ -8,9 +8,17 @@
+ 
+ dep_tristate '  CFI Flash device in physical memory map' CONFIG_MTD_PHYSMAP $CONFIG_MTD_GEN_PROBE
+ if [ "$CONFIG_MTD_PHYSMAP" = "y" -o "$CONFIG_MTD_PHYSMAP" = "m" ]; then
+-   hex '    Physical start address of flash mapping' CONFIG_MTD_PHYSMAP_START 0x8000000
+-   hex '    Physical length of flash mapping' CONFIG_MTD_PHYSMAP_LEN 0x4000000
+-   int '    Bus width in octets' CONFIG_MTD_PHYSMAP_BUSWIDTH 2
++   if [ "$CONFIG_TANGO2" = "y" ]; then
++      if [ ! "$CONFIG_TANGO2_SIG_BLOCK" = "y" -a ! "$CONFIG_TANGO2_XENV" = "y" ]; then
++         hex '    Physical start address of flash mapping' CONFIG_MTD_PHYSMAP_START 0x48000000
++         hex '    Physical length of flash mapping' CONFIG_MTD_PHYSMAP_LEN 0x4000000
++         int '    Bus width in octets' CONFIG_MTD_PHYSMAP_BUSWIDTH 2
++      fi
++   else
++      hex '    Physical start address of flash mapping' CONFIG_MTD_PHYSMAP_START 0x48000000
++      hex '    Physical length of flash mapping' CONFIG_MTD_PHYSMAP_LEN 0x4000000
++      int '    Bus width in octets' CONFIG_MTD_PHYSMAP_BUSWIDTH 2
++   fi
+ fi
+ 
+ if [ "$CONFIG_SPARC" = "y" -o "$CONFIG_SPARC64" = "y" ]; then
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/mtd/maps/physmap.c linuxmips-2.4.30/drivers/mtd/maps/physmap.c
+--- linuxmips-2.4.30.ref/drivers/mtd/maps/physmap.c	2003-02-25 16:53:50.000000000 -0800
++++ linuxmips-2.4.30/drivers/mtd/maps/physmap.c	2006-08-22 15:10:37.000000000 -0700
+@@ -16,11 +16,40 @@
+ #include <linux/mtd/partitions.h>
+ #endif
+ 
++#ifdef CONFIG_TANGO2
++#include <asm/tango2/rmdefs.h>
++#include <asm/tango2/emhwlib_registers_tango2.h>
++#define MAX_FLASH                   4
++#define XENV_MAX_FLASH_PARTITIONS   16
++extern unsigned int xenv_cs_flash_size[MAX_FLASH];
++extern unsigned int xenv_cs_flash_parts[MAX_FLASH];
++extern unsigned int xenv_flash_parts_size[MAX_FLASH][XENV_MAX_FLASH_PARTITIONS];
++extern unsigned int xenv_flash_parts_offset[MAX_FLASH][XENV_MAX_FLASH_PARTITIONS];
++#endif
++
++#ifdef CONFIG_TANGO2_SIG_BLOCK
++#include <asm/tango2/sigblock.h>
++#include <asm/tango2/zboot.h>
++#define WINDOW_ADDR	0
++#define WINDOW_SIZE	0
++#define BUSWIDTH       1
++#elif defined(CONFIG_TANGO2_XENV) /* Do nothing here */
++#else
+ #define WINDOW_ADDR CONFIG_MTD_PHYSMAP_START
+ #define WINDOW_SIZE CONFIG_MTD_PHYSMAP_LEN
++#endif
++
++#if !defined(CONFIG_TANGO2_SIG_BLOCK) && !defined(CONFIG_TANGO2_XENV)
+ #define BUSWIDTH CONFIG_MTD_PHYSMAP_BUSWIDTH
++#endif
+ 
++#if defined(CONFIG_TANGO2_XENV)
++static struct mtd_info *mymtd[MAX_FLASH] = { NULL, NULL, NULL, NULL };
++#else
++static unsigned long window_addr = WINDOW_ADDR;
++static unsigned long window_size = WINDOW_SIZE;
+ static struct mtd_info *mymtd;
++#endif /* CONFIG_TANGO2_XENV */
+ 
+ __u8 physmap_read8(struct map_info *map, unsigned long ofs)
+ {
+@@ -65,10 +94,66 @@
+ 	memcpy_toio(map->map_priv_1 + to, from, len);
+ }
+ 
++#if defined(CONFIG_TANGO2_XENV)
++struct map_info physmap_map[MAX_FLASH] = {
++	{
++            name: "CS0: Physically mapped flash",
++	    size: 0, /* Initially 0, but will be initialized later */
++	    buswidth: 1, /* The default width, may be probed to change later */
++	    read8: physmap_read8,
++	    read16: physmap_read16,
++	    read32: physmap_read32,
++	    copy_from: physmap_copy_from,
++	    write8: physmap_write8,
++	    write16: physmap_write16,
++	    write32: physmap_write32,
++	    copy_to: physmap_copy_to
++	},
++	{
++            name: "CS1: Physically mapped flash",
++	    size: 0, /* Initially 0, but will be initialized later */
++	    buswidth: 1, /* The default width, may be probed to change later */
++	    read8: physmap_read8,
++	    read16: physmap_read16,
++	    read32: physmap_read32,
++	    copy_from: physmap_copy_from,
++	    write8: physmap_write8,
++	    write16: physmap_write16,
++	    write32: physmap_write32,
++	    copy_to: physmap_copy_to
++	},
++	{
++            name: "CS2: Physically mapped flash",
++	    size: 0, /* Initially 0, but will be initialized later */
++	    buswidth: 1, /* The default width, may be probed to change later */
++	    read8: physmap_read8,
++	    read16: physmap_read16,
++	    read32: physmap_read32,
++	    copy_from: physmap_copy_from,
++	    write8: physmap_write8,
++	    write16: physmap_write16,
++	    write32: physmap_write32,
++	    copy_to: physmap_copy_to
++	},
++	{
++            name: "CS3: Physically mapped flash",
++	    size: 0, /* Initially 0, but will be initialized later */
++	    buswidth: 1, /* The default width, may be probed to change later */
++	    read8: physmap_read8,
++	    read16: physmap_read16,
++	    read32: physmap_read32,
++	    copy_from: physmap_copy_from,
++	    write8: physmap_write8,
++	    write16: physmap_write16,
++	    write32: physmap_write32,
++	    copy_to: physmap_copy_to
++	},
++};
++#else
+ struct map_info physmap_map = {
+ 	name: "Physically mapped flash",
+-	size: WINDOW_SIZE,
+-	buswidth: BUSWIDTH,
++	size: 0, /* Initially WINDOW_SIZE, but will be initialized later */
++	buswidth: BUSWIDTH, /* The default width, may be probed to change later */
+ 	read8: physmap_read8,
+ 	read16: physmap_read16,
+ 	read32: physmap_read32,
+@@ -78,28 +163,38 @@
+ 	write32: physmap_write32,
+ 	copy_to: physmap_copy_to
+ };
++#endif /* CONFIG_TANGO2_XENV */
+ 
+ #ifdef CONFIG_MTD_PARTITIONS
+ #ifdef CONFIG_MTD_CMDLINE_PARTS
+ static struct mtd_partition *mtd_parts = 0;
+ static int                   mtd_parts_nb = 0;
+ #else
++#if defined(CONFIG_TANGO2_XENV)
++static struct mtd_partition *physmap_partitions[MAX_FLASH] = { NULL, NULL, NULL, NULL };
++#else
+ static struct mtd_partition physmap_partitions[] = {
+ /* Put your own partition definitions here */
+-#if 0
++#if defined(CONFIG_TANGO2_SIG_BLOCK)
++	{	name: "Partition1", size: 0, offset: 0, mask_flags: 0 },
++	{	name: "Partition2", size: 0, offset: 0, mask_flags: 0 },
++	{	name: "Partition3", size: 0, offset: 0, mask_flags: 0 },
++	{	name: "Partition4", size: 0, offset: 0, mask_flags: 0 },
++	{	name: "Partition5", size: 0, offset: 0, mask_flags: 0 }
++#else
+ 	{
+-		name:		"bootROM",
+-		size:		0x80000,
++		name:		"zBoot",
++		size:		0x10000,
+ 		offset:		0,
+ 		mask_flags:	MTD_WRITEABLE,  /* force read-only */
+ 	}, {
+-		name:		"zImage",
+-		size:		0x100000,
++		name:		"BootStage1",
++		size:		0x30000,
+ 		offset:		MTDPART_OFS_APPEND,
+ 		mask_flags:	MTD_WRITEABLE,  /* force read-only */
+ 	}, {
+-		name:		"ramdisk.gz",
+-		size:		0x300000,
++		name:		"Linux",
++		size:		0x3b0000,
+ 		offset:		MTDPART_OFS_APPEND,
+ 		mask_flags:	MTD_WRITEABLE,  /* force read-only */
+ 	}, {
+@@ -107,21 +202,190 @@
+ 		size:		MTDPART_SIZ_FULL,
+ 		offset:		MTDPART_OFS_APPEND,
+ 	}
+-#endif
++#endif /* CONFIG_TANGO2_SIG_BLOCK */
+ };
++#endif 
+ 
+-#define NUM_PARTITIONS	(sizeof(physmap_partitions)/sizeof(struct mtd_partition))
+-
+-#endif
++#if !defined(CONFIG_TANGO2_XENV)
++static int num_partitions = (sizeof(physmap_partitions)/sizeof(struct mtd_partition));
+ #endif
+ 
++#endif /* CONFIG_MTD_CMDLINE_PARTS */
++#endif /* CONFIG_MTD_PARTITIONS */
++
++#if defined(CONFIG_TANGO2_XENV)
+ int __init init_physmap(void)
+ {
+ 	static const char *rom_probe_types[] = { "cfi_probe", "jedec_probe", "map_rom", 0 };
+ 	const char **type;
++	int i, j;
++	struct mtd_partition *part_ptr;
++	unsigned long w_addr;
++	unsigned long csconfig = gbus_read_uint32(pGBus, REG_BASE_host_interface + PB_CS_config) & 0xf;
++	struct mtd_info *mtdinfo;
++
++	for (i = 0, w_addr = 0x40000000; i < MAX_FLASH; i++, w_addr += 0x04000000) {
++		mtdinfo = NULL;
++		if ((physmap_map[i].size = xenv_cs_flash_size[i]) == 0)
++			continue;
++		physmap_map[i].map_priv_1 = (unsigned long)ioremap(w_addr, physmap_map[i].size);
++		if (physmap_map[i].map_priv_1 == 0) {
++			printk("Failed to ioremap at 0x%08lx, size 0x%08lx\n", w_addr, physmap_map[i].size);
++			return -EIO;
++		}
++		printk(KERN_NOTICE "physmap flash device CS%d: %x at %x (%x)\n", i, 
++				physmap_map[i].size, w_addr, physmap_map[i].map_priv_1);
++		physmap_map[i].buswidth = ((csconfig >> i) & 0x1) ? 1 : 2;
++		printk(KERN_NOTICE " detected buswidth: %d\n", physmap_map[i].buswidth);
++
++		/* Try to detect the actual size of flash memory */
++		for (type = rom_probe_types; (mtdinfo == NULL) && *type; type++) 
++			mtdinfo = do_map_probe(*type, &physmap_map[i]);
++		if (mtdinfo == NULL) {
++			iounmap((void *)physmap_map[i].map_priv_1);
++			continue;
++		} else if (mtdinfo->size != physmap_map[i].size) {
++			printk(KERN_NOTICE "Flash size mismatched (specified: 0x%x, detected: 0x%x).\n", 
++					physmap_map[i].size, mtdinfo->size);
++		}
++
++		if ((physmap_map[i].size > 0) && (xenv_cs_flash_parts[i] > 0)) {
++			unsigned long part_cnt;
++			physmap_partitions[i] = (struct mtd_partition *)kmalloc(sizeof(struct mtd_partition) *
++					xenv_cs_flash_parts[i], GFP_KERNEL);
++			if ((part_ptr = physmap_partitions[i]) != NULL) {
++				memset(physmap_partitions[i], 0, sizeof(struct mtd_partition) * xenv_cs_flash_parts[i]);
++				for (part_cnt = j = 0; j < xenv_cs_flash_parts[i]; j++) {
++					if (((xenv_flash_parts_size[i][j] & 0x7fffffff) + xenv_flash_parts_offset[i][j]) > 
++								mtdinfo->size) {
++						printk(KERN_NOTICE "CS%d-Part%d (offset:0x%x, size:0x%x) outside physical map, removed.\n", 
++								i, j + 1, xenv_flash_parts_offset[i][j], xenv_flash_parts_size[i][j] & 0x7fffffff);
++							continue;
++					}
++
++					part_ptr->size = xenv_flash_parts_size[i][j] & 0x7fffffff;
++					if (xenv_flash_parts_size[i][j] & 0x80000000)
++						part_ptr->mask_flags = MTD_WRITEABLE;
++					part_ptr->offset = xenv_flash_parts_offset[i][j];
++					part_ptr->name = (char *)kmalloc(16, GFP_KERNEL);
++					if (part_ptr->name != NULL)
++						sprintf(part_ptr->name, "CS%d-Part%d", i, j + 1);
++					part_cnt++;
++					part_ptr++;
++				} 
++				xenv_cs_flash_parts[i] = part_cnt;
++			} else {
++				printk("Cannot allocate memory, size 0x%x\n", 
++						sizeof(struct mtd_partition) * xenv_cs_flash_parts[i]);
++				return(-ENOMEM);
++			}
++		}
+ 
+-       	printk(KERN_NOTICE "physmap flash device: %x at %x\n", WINDOW_SIZE, WINDOW_ADDR);
+-	physmap_map.map_priv_1 = (unsigned long)ioremap(WINDOW_ADDR, WINDOW_SIZE);
++		mymtd[i] = mtdinfo;
++
++		if ((mymtd[i]) && (mymtd[i]->size != physmap_map[i].size)) {
++			/* Redo ioremap */
++			iounmap((void *)physmap_map[i].map_priv_1);
++			physmap_map[i].size = mymtd[i]->size;
++			physmap_map[i].map_priv_1 = (unsigned long)ioremap(w_addr, physmap_map[i].size);
++			if (physmap_map[i].map_priv_1 == 0) {
++				printk("Failed to ioremap at 0x%08lx, size 0x%08lx\n", w_addr, physmap_map[i].size);
++				return -EIO;
++			}
++			printk(KERN_NOTICE "physmap flash device CS%d: %x at %x (remapped %x)\n", i, 
++					physmap_map[i].size, w_addr, physmap_map[i].map_priv_1);
++		}
++
++		if (mymtd[i]) {
++			mymtd[i]->module = THIS_MODULE;
++			add_mtd_device(mymtd[i]);
++			if (xenv_cs_flash_parts[i] > 0) {
++				printk(KERN_NOTICE "Using physmap partition definition\n");
++				add_mtd_partitions (mymtd[i], physmap_partitions[i], xenv_cs_flash_parts[i]);
++			}
++		}
++	}
++	return(0);
++}
++
++static void __exit cleanup_physmap(void)
++{
++	int i, j;
++	struct mtd_partition *part_ptr;
++	for (i = 0; i < MAX_FLASH; i++) {
++		if (mymtd[i]) {
++			del_mtd_device(mymtd[i]);
++			map_destroy(mymtd[i]);
++		}
++
++		if (physmap_map[i].map_priv_1) {
++			iounmap((void *)physmap_map[i].map_priv_1);
++			physmap_map[i].map_priv_1 = 0;
++			if (physmap_partitions[i] != NULL) {
++				if ((part_ptr = physmap_partitions[i]) != NULL) {
++					for (j = 0; j < xenv_cs_flash_parts[i]; j++, part_ptr++) {
++						if (part_ptr->name != NULL) {
++							kfree(part_ptr->name);
++							part_ptr->name = NULL;
++						}
++					}
++				}
++				kfree(physmap_partitions[i]);
++				physmap_partitions[i] = NULL;
++			}
++		}
++	}
++}
++
++#else /* !CONFIG_TANGO2_XENV */
++
++int __init init_physmap(void)
++{
++	static const char *rom_probe_types[] = { "cfi_probe", "jedec_probe", "map_rom", 0 };
++	const char **type;
++
++#ifdef CONFIG_TANGO2_SIG_BLOCK
++	extern struct signature_block *sigptr;
++	if (pflash_info(sigptr, &window_addr, &window_size) < 0) {
++		printk(KERN_NOTICE "invalid flash description in signature block.\n");
++		return -EIO;
++	}
++#endif
++
++	physmap_map.map_priv_1 = (unsigned long)ioremap(window_addr, window_size);
++       	printk(KERN_NOTICE "physmap flash device: %x at %x (%x)\n", window_size, window_addr, physmap_map.map_priv_1);
++
++	physmap_map.size = window_size;
++
++#ifdef CONFIG_TANGO2_SIG_BLOCK
++	/* If window size larger than 0, and window address is the same as CSx (x=0..3),
++	 * we can then probe for the buswidth from PB_CS_config */
++	if (window_size > 0) {
++		unsigned long cs = 0xf;
++		unsigned long csconfig = gbus_read_uint32(pGBus, REG_BASE_host_interface + PB_CS_config) & 0xf;
++		switch(window_addr) {
++			case 0x40000000: cs = 0;
++					 break;
++			case 0x44000000: cs = 1;
++					 break;
++			case 0x48000000: cs = 2;
++					 break;
++			case 0x4c000000: cs = 3;
++					 break;
++		}
++		if (cs != 0xf) {
++			/* Tango2 only supports 8 or 16 bits */
++			physmap_map.buswidth = ((csconfig >> cs) & 0x1) ? 1 : 2;
++			printk(KERN_NOTICE " detected buswidth: %d\n", physmap_map.buswidth);
++		} else {
++			/* Use whatever has been setup */
++			printk(KERN_NOTICE " detected buswidth: failed, use default %d\n", physmap_map.buswidth);
++		}
++	} else {
++		/* Use whatever has been setup */
++		printk(KERN_NOTICE " detected buswidth: failed, use default %d\n", physmap_map.buswidth);
++	}
++#endif
+ 
+ 	if (!physmap_map.map_priv_1) {
+ 		printk("Failed to ioremap\n");
+@@ -137,6 +401,25 @@
+ 		mymtd->module = THIS_MODULE;
+ 
+ 		add_mtd_device(mymtd);
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK)
++		{
++			int i, idx;
++			unsigned long size, offset;
++			for (idx = 0, i = 1; i <= pflash_num_partitions(); i++) {
++				if (pflash_partition_info(sigptr, i, &offset, &size) < 0)
++					continue;
++				else if ((size & 0x7fffffff) == 0)      /* Skip the empty partition */
++					continue;
++				physmap_partitions[idx].size = size & 0x7fffffff;
++				physmap_partitions[idx].offset = offset;
++				physmap_partitions[idx].mask_flags = ((size & 0x80000000UL) ? MTD_WRITEABLE : 0);
++				idx++;
++			}
++			num_partitions = idx;
++		}
++#endif
++
+ #ifdef CONFIG_MTD_PARTITIONS
+ #ifdef CONFIG_MTD_CMDLINE_PARTS
+ 		mtd_parts_nb = parse_cmdline_partitions(mymtd, &mtd_parts, 
+@@ -148,11 +431,11 @@
+ 			add_mtd_partitions (mymtd, mtd_parts, mtd_parts_nb);
+ 		}
+ #else
+-		if (NUM_PARTITIONS != 0) 
++		if (num_partitions != 0) 
+ 		{
+ 			printk(KERN_NOTICE 
+ 			       "Using physmap partition definition\n");
+-			add_mtd_partitions (mymtd, physmap_partitions, NUM_PARTITIONS);
++			add_mtd_partitions (mymtd, physmap_partitions, num_partitions);
+ 		}
+ 
+ #endif
+@@ -175,6 +458,7 @@
+ 		physmap_map.map_priv_1 = 0;
+ 	}
+ }
++#endif /* CONFIG_TANGO2_XENV */
+ 
+ module_init(init_physmap);
+ module_exit(cleanup_physmap);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1009.mtd.patch linuxmips-2.4.30/README.1009.mtd.patch
+--- linuxmips-2.4.30.ref/README.1009.mtd.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1009.mtd.patch	2006-08-22 15:11:12.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++MTD support for SMP863x.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

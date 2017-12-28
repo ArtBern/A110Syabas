@@ -1,0 +1,38 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/Makefile linuxmips-2.4.30/Makefile
+--- linuxmips-2.4.30.ref/Makefile	2006-04-06 09:44:25.000000000 -0700
++++ linuxmips-2.4.30/Makefile	2006-04-06 09:46:40.000000000 -0700
+@@ -3,6 +3,11 @@
+ SUBLEVEL = 30
+ EXTRAVERSION = -tango2
+ 
++ifeq ($(RELEASE_NAME),)
++RELEASE_NAME := 2.8.0.1
++export RELEASE_NAME
++endif
++
+ ifneq ($(RELEASE_NAME),)
+ KERNELRELEASE=$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)-$(RELEASE_NAME)
+ else
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1027.RELEASE_NAME.patch linuxmips-2.4.30/README.1027.RELEASE_NAME.patch
+--- linuxmips-2.4.30.ref/README.1027.RELEASE_NAME.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1027.RELEASE_NAME.patch	2006-04-06 09:48:01.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Add current package's release name to linux version string.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++Bertrand Mollinier Toublet
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

@@ -1,0 +1,183 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/build_cpu_xload.bash linuxmips-2.4.30/build_cpu_xload.bash
+--- linuxmips-2.4.30.ref/build_cpu_xload.bash	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/build_cpu_xload.bash	2007-07-05 14:58:10.000000000 -0700
+@@ -0,0 +1,40 @@
++#!/bin/bash
++set -e
++#
++if [ $# != 3 ]; then 
++    cat <<EOF
++
++Syntax: $0 cpupkg 000b ES4_dev
++
++The cpupkg came with .zbf extension. You have to specify cpu binary xtask to wrap, 
++the certificate id you plan to use, and the chip revision (ES1_dev or ES4_dev) .
++also make sure that the scripts below are accessible and in your PATH variable
++EOF
++    exit -1 
++fi
++#
++if [ -z "$XSDK_ROOT" ]; then echo "*** You need to define the XSDK_ROOT variable ***"; exit -1; fi
++#
++CPUPKG=$1
++CERTID=$2
++REV=$3
++TMPADDR=0x13000000
++
++CPUPKG_BIN=${CPUPKG}.zbf
++CPUPKG_SIG=${CPUPKG}.8634_${REV}_${CERTID}.bin
++XLOAD_BIN=${CPUPKG}_${REV}.xload
++XRPC_BIN=xrpc_xload_${CPUPKG}_${REV}.bin
++PRIVATE_KEY=$XSDK_ROOT/dummy_private_keys/8634_${REV}_${CERTID}_keyboth.pem
++
++echo Using $CERT_BIN
++
++# aes128 pad!
++zeropad.bash $CPUPKG_BIN 16
++SIZE=`stat --format=%s $CPUPKG_BIN`
++
++echo CPUPKG Image Map : size=$SIZE
++
++openssl sha1 -sign $PRIVATE_KEY < $CPUPKG_BIN | revbytes.pl > $CPUPKG_SIG
++mkxload.bash $XSDK_ROOT $REV $CERTID $CPUPKG_BIN $CPUPKG_SIG  $XLOAD_BIN
++buildxrpc.bash XRPC_CALLERID_IGNORED XRPC_ID_XLOAD $SIZE $TMPADDR 2 3 4 $XLOAD_BIN $XRPC_BIN
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/Makefile linuxmips-2.4.30/Makefile
+--- linuxmips-2.4.30.ref/Makefile	2007-07-05 14:57:13.000000000 -0700
++++ linuxmips-2.4.30/Makefile	2007-07-05 15:00:09.000000000 -0700
+@@ -63,7 +63,15 @@
+ include .config
+ ifeq (.depend,$(wildcard .depend))
+ include .depend
+-do-it-all:	Version vmlinux vmlinux.bin vmlinux.gz
++ifeq ($(CONFIG_TANGO2_XENV),y)
++do-it-all:	Version vmlinux vmlinux.bin vmlinux.gz vmlinux.zbf zbimage-linux-xrpc zbimage-linux-enc
++else
++ifeq ($(CONFIG_TANGO2_SIG_BLOCK),y)
++do-it-all:	Version vmlinux vmlinux.bin vmlinux.gz vmlinux.zbf zbimage-linux
++else
++do-it-all:	Version vmlinux vmlinux.bin vmlinux.gz 
++endif
++endif
+ else
+ CONFIGURATION = depend
+ do-it-all:	depend
+@@ -205,8 +213,8 @@
+ # files removed with 'make clean'
+ CLEAN_FILES = \
+ 	kernel/ksyms.lst include/linux/compile.h \
+-	vmlinux vmlinux.bin vmlinux.gz vmlinux.dasm System.map \
+-	.tmp* \
++	vmlinux vmlinux*.bin vmlinux.gz vmlinux.zbf zbimage-* vmlinux.dasm System.map \
++	.tmp* *.xload xrpc*.bin vmlinux_sha1* vmlinux_enc* \
+ 	drivers/char/consolemap_deftbl.c drivers/video/promcon_tbl.c \
+ 	drivers/char/conmakehash \
+ 	drivers/char/drm/*-mod.c \
+@@ -264,6 +272,17 @@
+ 
+ include arch/$(ARCH)/Makefile
+ 
++ifeq ($(CONFIG_TANGO2_XENV),y)
++ifneq '$(filter -DWITH_PROD=1 -DWITH_FACSPROD=1, $(RMCFLAGS))' ''
++CERT_ID=000c
++#CERT_ID=000a
++CERT_TYPE=ES4_prod
++else
++CERT_ID=000b
++CERT_TYPE=ES4_dev
++endif
++endif
++
+ # Extra cflags for kbuild 2.4.  The default is to forbid includes by kernel code
+ # from user space headers.  Some UML code requires user space headers, in the
+ # UML Makefiles add 'kbuild_2_4_nostdinc :=' before include Rules.make.  No
+@@ -301,10 +320,51 @@
+ 	$(NM) vmlinux | grep -v '\(compiled\)\|\(\.o$$\)\|\( [aUw] \)\|\(\.\.ng$$\)\|\(LASH[RL]DI\)' | sort > System.map
+ 
+ vmlinux.bin: vmlinux
+-	$(OBJCOPY) -O binary vmlinux vmlinux.bin
++	$(OBJCOPY) -O binary $< $@
+ 
+ vmlinux.gz: vmlinux.bin
+-	gzip -c9 vmlinux.bin > vmlinux.gz
++	gzip -c9 $< > $@
++
++vmlinux.zbf: vmlinux.gz
++	genzbf -l $(LOADADDR) -s $(LOADADDR) -a lzf -o $@ $<
++
++ifeq ($(CONFIG_TANGO2_SIG_BLOCK),y)
++zbimage-linux: vmlinux.zbf
++	mkdir romfs
++	cp -f $< romfs
++	genromfs -V MIPS_LINUX -d romfs -f $@
++	rm -rf romfs
++endif
++
++ifeq ($(CONFIG_TANGO2_XENV),y)
++xrpc_xload_vmlinux_$(CERT_TYPE).bin: vmlinux.zbf
++	sh build_cpu_xload.bash vmlinux $(CERT_ID) $(CERT_TYPE)
++
++zbimage-linux-xrpc: xrpc_xload_vmlinux_$(CERT_TYPE).bin
++	mkdir romfs
++	cp -f $< romfs
++	genromfs -V MIPS_LINUX_XRPC -d romfs -f $@
++	rm -rf romfs
++
++vmlinux_sha1.zbf: vmlinux.gz
++	@tobin.bash `sha1sum -b $< | awk '{ print $$1 }'` > $@
++
++xrpc_xload_vmlinux_sha1_$(CERT_TYPE).bin: vmlinux_sha1.zbf
++	sh build_cpu_xload.bash vmlinux_sha1 $(CERT_ID) $(CERT_TYPE)
++
++vmlinux_enc.bin: xrpc_xload_vmlinux_sha1_$(CERT_TYPE).bin vmlinux.gz
++	@cat $^ > $@
++
++vmlinux_enc.zbf: vmlinux_enc.bin
++	genzbf -l $(LOADADDR) -s $(LOADADDR) -e `stat --format=%s xrpc_xload_vmlinux_sha1_$(CERT_TYPE).bin` -a lzef -o $@ $<
++
++zbimage-linux-enc: vmlinux_enc.zbf
++	mkdir romfs
++	cp -f $< romfs
++	genromfs -V MIPS_LINUX_ENC -d romfs -f $@
++	rm -rf romfs
++
++endif
+ 
+ symlinks:
+ 	rm -f include/asm
+@@ -556,10 +616,10 @@
+ #
+ 
+ scripts/mkdep: scripts/mkdep.c
+-	$(HOSTCC) $(HOSTCFLAGS) -o scripts/mkdep scripts/mkdep.c
++	$(HOSTCC) -static $(HOSTCFLAGS) -o scripts/mkdep scripts/mkdep.c
+ 
+ scripts/split-include: scripts/split-include.c
+-	$(HOSTCC) $(HOSTCFLAGS) -o scripts/split-include scripts/split-include.c
++	$(HOSTCC) -static $(HOSTCFLAGS) -o scripts/split-include scripts/split-include.c
+ 
+ #
+ # RPM target
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1013.zbf.patch linuxmips-2.4.30/README.1013.zbf.patch
+--- linuxmips-2.4.30.ref/README.1013.zbf.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1013.zbf.patch	2007-07-05 15:01:10.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Support zboot file format as well as creating zboot container.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

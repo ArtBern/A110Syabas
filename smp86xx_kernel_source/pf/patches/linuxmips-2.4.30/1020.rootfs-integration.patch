@@ -1,0 +1,136 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/config-shared.in linuxmips-2.4.30/arch/mips/config-shared.in
+--- linuxmips-2.4.30.ref/arch/mips/config-shared.in	2007-07-05 15:01:37.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/config-shared.in	2007-07-05 15:02:40.000000000 -0700
+@@ -916,9 +916,6 @@
+    mainmenu_option next_comment
+    comment 'MIPS initrd options'
+    bool '  Embed root filesystem ramdisk into the kernel' CONFIG_EMBEDDED_RAMDISK
+-   if [ "$CONFIG_EMBEDDED_RAMDISK" = "y" ]; then
+-      string '    Filename of gziped ramdisk image' CONFIG_EMBEDDED_RAMDISK_IMAGE ramdisk.gz
+-   fi
+    endmenu
+ fi
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/ramdisk/Makefile linuxmips-2.4.30/arch/mips/ramdisk/Makefile
+--- linuxmips-2.4.30.ref/arch/mips/ramdisk/Makefile	2004-06-08 13:41:49.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/ramdisk/Makefile	2007-07-05 15:02:40.000000000 -0700
+@@ -5,11 +5,21 @@
+ # removes any old dependencies. DON'T put your own dependencies here
+ # unless it's something special (ie not a .c file).
+ #
++ifndef SMP86XX_ROOTFS_PATH
++$(warning SMP86XX_ROOTFS_PATH must be defined in order to be able to use an )
++$(warning embedded RAMdisk as the kernel root file system.                  )
++$(warning Either deselect the initrd option in the kernel configuration or  )
++$(warning define SMP86XX_ROOTFS_PATH--the easiest way to do that is to      )
++$(warning source rootfs-path.env in the rootfs MIPSutils package.           )
++$(warning                                                                   )
++$(error Error: SMP86XX_ROOTFS_PATH is not defined.                          )
++endif
++img := $(SMP86XX_ROOTFS_PATH)/root_fs_mipsel.cramfs
+ 
+ O_FORMAT = $(shell $(OBJDUMP) -i | head -2 | grep elf32)
+-img = $(CONFIG_EMBEDDED_RAMDISK_IMAGE)
+-ramdisk.o: $(subst ",,$(img)) ld.script
+-	echo "O_FORMAT:  " $(O_FORMAT)
++
++ramdisk.o: $(img) ld.script
++	@echo "O_FORMAT:  " $(O_FORMAT)
+ 	$(LD) $(LDFLAGS) -T ld.script -b binary --oformat $(O_FORMAT) -o $@ $(img)
+ 
+ include $(TOPDIR)/Rules.make
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/Makefile linuxmips-2.4.30/Makefile
+--- linuxmips-2.4.30.ref/Makefile	2007-07-05 15:00:09.000000000 -0700
++++ linuxmips-2.4.30/Makefile	2007-07-05 15:02:40.000000000 -0700
+@@ -93,6 +93,13 @@
+ # relocations required by build roots.  This is not defined in the
+ # makefile but the arguement can be passed to make if needed.
+ #
++# For the Sigma Designs version, INSTALL_MOD_PATH is defined to 
++# $(SMP86XX_ROOTFS_PATH)/package/customize/source if the variable
++# SMP86XX_ROOTFS_PATH itself is defined upon processing the Makefile.
++#
++ifdef SMP86XX_ROOTFS_PATH
++INSTALL_MOD_PATH := $(SMP86XX_ROOTFS_PATH)/package/customize/source
++endif
+ 
+ MODLIB	:= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
+ export MODLIB
+@@ -471,6 +478,14 @@
+ 
+ .PHONY: _modinst_
+ _modinst_:
++	@if [ ! $$SMP86XX_ROOTFS_PATH ]; \
++	then \
++		echo "Error: the 'modules_install' target only works when" 2>&1; \
++		echo "INSTALL_MOD_PATH is defined. The best way to go about" 2>&1; \
++		echo "that is to define SMP86XX_ROOTFS_PATH by sourcing" 2>&1; \
++		echo "'rootfs-path.env' in your rootfs package." 2>&1; \
++		false; \
++	fi
+ 	@rm -rf $(MODLIB)/kernel
+ 	@rm -f $(MODLIB)/build
+ 	@mkdir -p $(MODLIB)/kernel
+@@ -488,13 +503,32 @@
+ endif
+ .PHONY: _modinst_post
+ _modinst_post: _modinst_post_pcmcia
+-	if [ -r System.map ]; then $(DEPMOD) -ae -F System.map $(depmod_opts) $(KERNELRELEASE); fi
++	@if [ ! $$SMP86XX_ROOTFS_PATH ]; \
++	then \
++		echo "Error: the 'modules_install' target only works when" 2>&1; \
++		echo "INSTALL_MOD_PATH is defined. The best way to go about" 2>&1; \
++		echo "that is to define SMP86XX_ROOTFS_PATH by sourcing" 2>&1; \
++		echo "'rootfs-path.env' in your rootfs package." 2>&1; \
++		false; \
++	fi
++	if [ -r System.map ]; \
++	then \
++		$(DEPMOD) -F System.map $(depmod_opts) $(KERNELRELEASE); \
++	fi
+ 
+ # Backwards compatibilty symlinks for people still using old versions
+ # of pcmcia-cs with hard coded pathnames on insmod.  Remove
+ # _modinst_post_pcmcia for kernel 2.4.1.
+ .PHONY: _modinst_post_pcmcia
+ _modinst_post_pcmcia:
++	@if [ ! $$SMP86XX_ROOTFS_PATH ]; \
++	then \
++		echo "Error: the 'modules_install' target only works when" 2>&1; \
++		echo "INSTALL_MOD_PATH is defined. The best way to go about" 2>&1; \
++		echo "that is to define SMP86XX_ROOTFS_PATH by sourcing" 2>&1; \
++		echo "'rootfs-path.env' in your rootfs package." 2>&1; \
++		false; \
++	fi
+ 	cd $(MODLIB); \
+ 	mkdir -p pcmcia; \
+ 	find kernel -path '*/pcmcia/*' -name '*.o' | xargs -i -r ln -sf ../{} pcmcia
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1020.rootfs-integration.patch linuxmips-2.4.30/README.1020.rootfs-integration.patch
+--- linuxmips-2.4.30.ref/README.1020.rootfs-integration.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1020.rootfs-integration.patch	2007-07-05 15:04:06.000000000 -0700
+@@ -0,0 +1,25 @@
++Feature:
++--------
++Integration with the rootfs:
++ - automatic retrieval of the rootfs image from the rootfs package if
++   SMP86XX_ROOTFS_PATH is defined and $SMP86XX_ROOTFS_PATH/root_fs_mipsel.cramfs
++   exists.
++ - the kernel is now able to install its modules into the customization part of
++   the rootfs package, provided the right definitions are in the environment.
++
++Prerequisite patch numbers:
++---------------------------
++1000
++1013
++
++Primary author:
++---------------
++Bertrand Mollinier Toublet
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------
++none

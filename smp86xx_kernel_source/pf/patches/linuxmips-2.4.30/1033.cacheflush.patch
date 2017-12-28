@@ -1,0 +1,55 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/mm/cache.c linuxmips-2.4.30/arch/mips/mm/cache.c
+--- linuxmips-2.4.30.ref/arch/mips/mm/cache.c	2003-07-18 07:16:06.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/mm/cache.c	2006-11-30 15:08:48.000000000 -0800
+@@ -11,12 +11,28 @@
+ #include <linux/mm.h>
+ 
+ #include <asm/cacheflush.h>
++#include <asm/uaccess.h>
+ 
+ asmlinkage int sys_cacheflush(void *addr, int bytes, int cache)
+ {
++#if 0
+ 	/* This should flush more selectivly ...  */
+ 	__flush_cache_all();
+-
++#else
++	if (bytes == 0)
++		return 0;
++	if (!access_ok(VERIFY_WRITE, (void *)addr, bytes))
++		return -EFAULT;
++
++	if (cache & ICACHE)
++		flush_icache_range((unsigned long)addr, ((unsigned long)addr) + bytes);
++	if (cache & DCACHE) {
++		unsigned long start_addr;
++		for (start_addr = (unsigned long)addr; start_addr < (((unsigned long)addr) + bytes); 
++				start_addr += PAGE_SIZE)
++			flush_data_cache_page(start_addr);
++	}
++#endif
+ 	return 0;
+ }
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1033.cacheflush.patch linuxmips-2.4.30/README.1033.cacheflush.patch
+--- linuxmips-2.4.30.ref/README.1033.cacheflush.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1033.cacheflush.patch	2006-11-30 15:10:11.000000000 -0800
+@@ -0,0 +1,18 @@
++Feature:
++--------
++More optimization on cacheflush system call.
++
++Prerequisite patch numbers:
++---------------------------
++none
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP86xx xx=?
++------------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

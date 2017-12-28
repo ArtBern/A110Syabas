@@ -1,0 +1,80 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/setup.c linuxmips-2.4.30/arch/mips/tango2/setup.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/setup.c	2006-05-18 11:13:36.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/tango2/setup.c	2006-05-18 11:18:29.000000000 -0700
+@@ -118,12 +118,53 @@
+ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + G2L_RESET_CONTROL, 3);
+ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + G2L_RESET_CONTROL, 2);
+ 
++#ifdef CONFIG_TANGO2_XENV
++	/* nowhere to  jump, everything is  in xload format,  lets ask
++ 	 * xpu to reboot */
++	{
++#define XRPC_ID_REBOOT		19
++#define SOFT_IRQ_XRPC		(1 << 4)
++
++		struct xrpc_block_header {
++			u32 callerid;
++			u32 xrpcid;
++			u32 param0;
++			u32 param1;
++			u32 param2;
++			u32 param3;
++			u32 param4;
++			u32 headerandblocksize;
++		};
++
++		int loop;
++		unsigned long base_addr = DMEM_BASE_audio_engine_0;
++		struct xrpc_block_header *pB = (struct xrpc_block_header *)base_addr;
++
++		gbus_write_uint32(pGBus, (unsigned long)&pB->callerid, 0);
++		gbus_write_uint32(pGBus, (unsigned long)&pB->headerandblocksize, 
++				(sizeof(struct xrpc_block_header) + 63) & ~63);
++		gbus_write_uint32(pGBus, (unsigned long)&pB->xrpcid, XRPC_ID_REBOOT);
++
++		/* try to lock xrpc mutex for at most 1 sec */
++		for (loop = 0; loop < 1000; loop++) {
++			if (!gbus_read_uint32(pGBus, REG_BASE_host_interface + host_mutex10))
++				break;
++			mdelay(1);
++		}
++		gbus_write_uint32(pGBus, REG_BASE_cpu_block + LR_XPU_STAGE, (unsigned long)pB);
++
++		/* cross our fingers now */
++		gbus_write_uint32(pGBus, REG_BASE_irq_handler_block + CPU_irq_softset, SOFT_IRQ_XRPC);
++		while (1);
++	}
++#else
+ 	/* Now to handle CPU side */
+         set_c0_status(ST0_BEV | ST0_ERL);
+         change_c0_config(CONF_CM_CMASK, CONF_CM_UNCACHED);
+         flush_cache_all();
+         write_c0_wired(0);
+         __asm__ __volatile__("jr\t%0"::"r"(0xbfc00000));
++#endif
+ }
+ 
+ void tango2_halt(void)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1028.reboot.patch linuxmips-2.4.30/README.1028.reboot.patch
+--- linuxmips-2.4.30.ref/README.1028.reboot.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1028.reboot.patch	2006-05-18 11:19:33.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Using XRPC to do XPU reboot.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

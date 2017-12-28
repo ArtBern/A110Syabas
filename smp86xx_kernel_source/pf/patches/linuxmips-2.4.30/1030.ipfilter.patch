@@ -1,0 +1,96 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/config-tango2.in linuxmips-2.4.30/arch/mips/config-tango2.in
+--- linuxmips-2.4.30.ref/arch/mips/config-tango2.in	2006-07-17 16:08:23.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/config-tango2.in	2006-07-19 20:15:24.000000000 -0700
+@@ -68,5 +68,7 @@
+ #define_bool CONFIG_SD_KEEP_SBOX_R1W1 y
+ define_bool CONFIG_TANGO2_CACHE_PROC_INFO y
+  
++define_bool CONFIG_SD_IPFILTER y
++
+ endmenu
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/net/core/dev.c linuxmips-2.4.30/net/core/dev.c
+--- linuxmips-2.4.30.ref/net/core/dev.c	2006-07-17 16:08:30.000000000 -0700
++++ linuxmips-2.4.30/net/core/dev.c	2006-07-20 10:27:13.000000000 -0700
+@@ -193,6 +193,9 @@
+ int netdev_fastroute_obstacles;
+ #endif
+ 
++#ifdef CONFIG_SD_IPFILTER
++void *(*sd_ipfilter)(unsigned char *, int) = NULL;
++#endif
+ 
+ /******************************************************************************************
+ 
+@@ -1284,6 +1287,13 @@
+ 	struct softnet_data *queue;
+ 	unsigned long flags;
+ 
++#ifdef CONFIG_SD_IPFILTER
++	if ((sd_ipfilter != NULL) && (((*sd_ipfilter)(skb->data, skb->len)) == NULL)) {
++		kfree_skb(skb);
++		return NET_RX_SUCCESS;
++	}
++#endif
++
+ 	if (skb->stamp.tv_sec == 0)
+ 		do_gettimeofday(&skb->stamp);
+ 
+@@ -1292,6 +1302,7 @@
+ 	 */
+ 
+ 	local_irq_save(flags);
++
+ 	this_cpu = smp_processor_id();
+ 	queue = &softnet_data[this_cpu];
+ 
+@@ -1471,6 +1482,13 @@
+ 	int ret = NET_RX_DROP;
+ 	unsigned short type;
+ 
++#ifdef CONFIG_SD_IPFILTER
++	if ((sd_ipfilter != NULL) && (((*sd_ipfilter)(skb->data, skb->len)) == NULL)) {
++		kfree_skb(skb);
++		return NET_RX_SUCCESS;
++	}
++#endif
++
+ 	if (skb->stamp.tv_sec == 0)
+ 		do_gettimeofday(&skb->stamp);
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/net/netsyms.c linuxmips-2.4.30/net/netsyms.c
+--- linuxmips-2.4.30.ref/net/netsyms.c	2005-03-18 04:13:31.000000000 -0800
++++ linuxmips-2.4.30/net/netsyms.c	2006-07-19 20:13:16.000000000 -0700
+@@ -627,4 +627,9 @@
+ EXPORT_SYMBOL(wireless_spy_update);
+ #endif /* CONFIG_NET_RADIO || CONFIG_NET_PCMCIA_RADIO */
+ 
++#ifdef CONFIG_SD_IPFILTER
++extern void *(*sd_ipfilter)(unsigned char *, int);
++EXPORT_SYMBOL(sd_ipfilter);
++#endif
++
+ #endif  /* CONFIG_NET */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1030.ipfilter.patch linuxmips-2.4.30/README.1030.ipfilter.patch
+--- linuxmips-2.4.30.ref/README.1030.ipfilter.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1030.ipfilter.patch	2006-07-20 10:27:45.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Hook for Sigma's IP filter.
++
++Prerequisite patch numbers:
++---------------------------
++none
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------
++CONFIG_SD_IPFILTER

@@ -1,0 +1,978 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/mm/init.c linuxmips-2.4.30/arch/mips/mm/init.c
+--- linuxmips-2.4.30.ref/arch/mips/mm/init.c	2003-12-11 13:07:56.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/mm/init.c	2007-01-09 13:04:02.000000000 -0800
+@@ -240,17 +240,32 @@
+ 	unsigned long zones_size[MAX_NR_ZONES] = {0, 0, 0};
+ 	unsigned long max_dma, high, low;
+ 
++#if defined(CONFIG_TANGO2) && defined(CONFIG_PCI)
++	extern unsigned long em8xxx_kmem_start;
++	extern unsigned long em8xxx_kmem_size;
++	extern int tango2_pci_host_enabled(void);
++#endif
++
+ 	pagetable_init();
+ 
+ #ifdef CONFIG_HIGHMEM
+ 	kmap_init();
+ #endif
+ 
+-	max_dma = virt_to_phys((char *)MAX_DMA_ADDRESS) >> PAGE_SHIFT;
+ 	low = max_low_pfn;
+ 	high = highend_pfn;
+ 
+-#ifdef CONFIG_ISA
++#if defined(CONFIG_TANGO2) && defined(CONFIG_PCI)
++	/* If PCI is used, then limit DMA memory to ~112MB if kernel memory is > 112MB */
++	if (tango2_pci_host_enabled() && (em8xxx_kmem_size>(112<<20))) 
++		max_dma = virt_to_phys((char *)((em8xxx_kmem_start+(112<<20))&0xfff00000)) >> PAGE_SHIFT;
++	else
++		max_dma = virt_to_phys((char *)MAX_DMA_ADDRESS) >> PAGE_SHIFT;
++#else
++	max_dma = virt_to_phys((char *)MAX_DMA_ADDRESS) >> PAGE_SHIFT;
++#endif /* CONFIG_TANGO2 && CONFIG_PCI */
++
++#if defined(CONFIG_ISA) || (defined(CONFIG_TANGO2) && defined(CONFIG_PCI))
+ 	if (low < max_dma)
+ 		zones_size[ZONE_DMA] = low;
+ 	else {
+@@ -260,6 +275,7 @@
+ #else
+ 	zones_size[ZONE_DMA] = low;
+ #endif
++
+ #ifdef CONFIG_HIGHMEM
+ 	if (cpu_has_dc_aliases) {
+ 		printk(KERN_WARNING "This processor doesn't support highmem.");
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/pci/pci_auto.c linuxmips-2.4.30/arch/mips/pci/pci_auto.c
+--- linuxmips-2.4.30.ref/arch/mips/pci/pci_auto.c	2003-06-27 19:26:25.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/pci/pci_auto.c	2007-01-09 13:01:43.000000000 -0800
+@@ -41,7 +41,7 @@
+ 
+ #include <asm/pci_channel.h>
+ 
+-#define	DEBUG
++//#define DEBUG
+ #ifdef 	DEBUG
+ #define	DBG(x...)	printk(x)
+ #else
+@@ -188,9 +188,25 @@
+ 			continue;
+ 		}
+ 
++#ifdef CONFIG_TANGO2
++		{
++			u32 val = bar_value;
++			if (bar_response & PCI_BASE_ADDRESS_SPACE) 
++			// adjust address between GBUS and PCI bus (PCI I/O)
++				val -= MEMORY_BASE_PCI_CONFIG;
++			else
++			// adjust address between GBUS and PCI bus (PCI memory)
++				val -= MEMORY_BASE_PCI_MEMORY;
++
++			/* Write it out and update our limit */
++			early_write_config_dword(hose, top_bus, current_bus, 
++				pci_devfn, bar, val);
++		}
++#else
+ 		/* Write it out and update our limit */
+ 		early_write_config_dword(hose, top_bus, current_bus, pci_devfn,
+ 					 bar, bar_value);
++#endif
+ 
+ 		*lower_limit = bar_value + bar_size;
+ 
+@@ -400,13 +416,15 @@
+ 		if (PCI_FUNC(pci_devfn) && !found_multi)
+ 			continue;
+ 
+-		early_read_config_word(hose, top_bus, current_bus, pci_devfn,
+-				       PCI_VENDOR_ID, &vid);
++		if (early_read_config_word(hose, top_bus, current_bus, 
++			pci_devfn, PCI_VENDOR_ID, &vid) != PCIBIOS_SUCCESSFUL)
++			continue;
+ 
+ 		if (vid == 0xffff) continue;
+ 
+-		early_read_config_byte(hose, top_bus, current_bus, pci_devfn,
+-				       PCI_HEADER_TYPE, &header_type);
++		if (early_read_config_byte(hose, top_bus, current_bus, 
++			pci_devfn, PCI_HEADER_TYPE, &header_type) != PCIBIOS_SUCCESSFUL)
++			continue;
+ 
+ 		if (!PCI_FUNC(pci_devfn))
+ 			found_multi = header_type & 0x80;
+@@ -479,6 +497,7 @@
+ 					 PCI_COMMAND, cmdstat | PCI_COMMAND_IO |
+ 					 PCI_COMMAND_MEMORY |
+ 					 PCI_COMMAND_MASTER);
++
+ 		early_write_config_byte(hose, top_bus, current_bus, pci_devfn,
+ 					PCI_LATENCY_TIMER, 0x80);
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/pci/pci.c linuxmips-2.4.30/arch/mips/pci/pci.c
+--- linuxmips-2.4.30.ref/arch/mips/pci/pci.c	2004-03-16 07:03:32.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/pci/pci.c	2007-01-09 13:01:43.000000000 -0800
+@@ -89,6 +89,18 @@
+ 
+ char * __devinit pcibios_setup(char *str)
+ {
++	extern int pci_enabled;
++
++	if (strcmp(str, "disabled") == 0) {
++		pci_enabled = 0;
++		return(NULL);
++	} else if (strcmp(str, "off") == 0) {
++		pci_enabled = 0;
++		return(NULL);
++	} else if (strcmp(str, "on") == 0) {
++		pci_enabled = 1;
++		return(NULL);
++	}
+ 	return str;
+ }
+ 
+@@ -199,6 +211,11 @@
+ 	struct pci_bus *bus;
+ 	int busno;
+ 
++#ifdef CONFIG_TANGO2
++	extern void __init tango2_pcibios_init(void);
++	tango2_pcibios_init();
++#endif
++
+ #ifdef CONFIG_PCI_AUTO
+ 	/* assign resources */
+ 	busno=0;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/Makefile linuxmips-2.4.30/arch/mips/tango2/Makefile
+--- linuxmips-2.4.30.ref/arch/mips/tango2/Makefile	2007-01-09 12:55:21.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/Makefile	2007-01-09 13:01:43.000000000 -0800
+@@ -18,4 +18,9 @@
+ obj-y	+= sha1sum.o xenv.o full_sha1.o
+ endif
+ 
++ifdef CONFIG_PCI
++export-objs	+= pci.o
++obj-y		+= pci.o pci_fixups.o
++endif
++
+ include $(TOPDIR)/Rules.make
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/pci.c linuxmips-2.4.30/arch/mips/tango2/pci.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/pci.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/pci.c	2007-01-09 13:02:14.000000000 -0800
+@@ -0,0 +1,356 @@
++/*****************************************
++ Copyright © 2001-2003  
++ Sigma Designs, Inc. All Rights Reserved
++ Proprietary and Confidential
++ *****************************************/
++/**
++  @file   pci.c
++  @brief  
++
++  PCI support for Tango2.
++
++  @author YH Lin
++  @date   2005-01-20
++*/
++
++#include <linux/config.h>
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/types.h>
++#include <linux/pci.h>
++#include <linux/module.h>
++                                                                                
++#include <asm/pci_channel.h>
++#include <asm/debug.h>
++
++#include <asm/tango2/rmdefs.h>
++#include <asm/tango2/hardware.h>
++
++#define PCIEM86XX_ARBITER_LEVEL         0x00
++#define PCIEM86XX_ARBITER_GRANTTIMEOUT  0x10101010
++
++#define PCIEM86XX_IDSEL_MAX	0x05
++#define PCIEM86XX_IDSEL_BITS	0x03
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++extern int tango2_pci_host_enabled(void);
++extern int tango2_pcidev_enabled(const int pci_idsel);
++#endif
++
++static int tango2_pci_read_config_byte(struct pci_dev *dev, int where, u8 *value);
++static int tango2_pci_read_config_word(struct pci_dev *dev, int where, u16 *value);
++static int tango2_pci_read_config_dword(struct pci_dev *dev, int where, u32 *value);
++static int tango2_pci_write_config_byte(struct pci_dev *dev, int where, u8 value);
++static int tango2_pci_write_config_word(struct pci_dev *dev, int where, u16 value);
++static int tango2_pci_write_config_dword(struct pci_dev *dev, int where, u32 value);
++                                                                                
++struct pci_ops tango2_ext_pci_ops = {
++    tango2_pci_read_config_byte,
++    tango2_pci_read_config_word,
++    tango2_pci_read_config_dword,
++    tango2_pci_write_config_byte,
++    tango2_pci_write_config_word,
++    tango2_pci_write_config_dword,
++};
++
++static struct resource extpci_io_resource = {
++	"PCI IO space",
++	MEMORY_BASE_PCI_IO,
++	MEMORY_BASE_PCI_IO + 0x08000000 - 1,
++	IORESOURCE_IO
++};
++
++static struct resource extpci_mem_resource = {
++	"PCI MEM space",
++	MEMORY_BASE_PCI_MEMORY,
++	MEMORY_BASE_PCI_MEMORY + 0x20000000 - 1,
++	IORESOURCE_MEM
++};
++
++struct pci_channel mips_pci_channels[] = {
++	{ &tango2_ext_pci_ops, &extpci_io_resource, &extpci_mem_resource },
++	{ NULL, NULL, NULL }
++};
++
++static int g_last_idsel = -1;
++static int g_idsel_exist[PCIEM86XX_IDSEL_MAX] = { 0, 0, 0, 0, 0 };
++static int g_idsel_func_exist[PCIEM86XX_IDSEL_MAX * 8];
++
++extern unsigned long em8xxx_kmem_start;
++extern unsigned long em8xxx_kmem_size;
++
++unsigned long g_pcimem_busaddr = PCIBIOS_MIN_MEM_EM86XX - MEMORY_BASE_PCI_MEMORY;
++unsigned long g_pcimem_phyaddr = 0;
++unsigned long g_pcimem_phyaddr_end = 0;
++
++unsigned long tango2_pci_config_base = 0;
++static unsigned long tango2_pci_io_base = 0;
++//static unsigned long tango2_pci_mem_base = 0;
++
++#define PCIEM86XX_CONFIG_START                                              \
++    unsigned long flags;                                                    \
++    int idsel = PCI_SLOT(dev->devfn), func = PCI_FUNC(dev->devfn);          \
++                                                                            \
++    if (idsel >= PCIEM86XX_IDSEL_MAX || !g_idsel_exist[idsel] || !g_idsel_func_exist[idsel * 8 + func])              \
++        return PCIBIOS_DEVICE_NOT_FOUND;                                    \
++    local_irq_save(flags);
++                                                                                
++#define PCIEM86XX_CONFIG_END                                                \
++    local_irq_restore(flags);                                               \
++    return PCIBIOS_SUCCESSFUL;
++                                                                                
++#define PCIEM86XX_CONFIG_READ(x, type, size)                                \
++    static int tango2_pci_read_config_##type(struct pci_dev *dev, int where, u##size *value) \
++    {                                                                       \
++        PCIEM86XX_CONFIG_START                                              \
++        *value = __raw_read##x(tango2_pci_config_base + ((func << 8) | where | (idsel << 11) | (dev->bus->number << 16)));\
++        {                                                   \
++            unsigned long data = (gbus_read_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3) >> 1) & 0x3;   \
++            if (data) { /* bus fault */                                     \
++if (0) printk("PCI Bus fault detected 0x%x\n", data); \
++		g_idsel_func_exist[idsel * 8 + func] = 0; \
++                gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 1); \
++                gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 0); \
++                return PCIBIOS_DEVICE_NOT_FOUND;                            \
++            }                                                               \
++        }                                                                   \
++        PCIEM86XX_CONFIG_END                                                \
++    }
++                                                                                
++#define PCIEM86XX_CONFIG_WRITE(x, type, size)                               \
++    static int tango2_pci_write_config_##type(struct pci_dev *dev, int where, u##size value) \
++    {                                                                       \
++        PCIEM86XX_CONFIG_START                                              \
++        __raw_write##x(value, tango2_pci_config_base + ((func << 8) | where | (idsel << 11) | (dev->bus->number << 16)));    \
++        PCIEM86XX_CONFIG_END \
++    }
++                                                                                
++PCIEM86XX_CONFIG_READ(b, byte, 8)
++PCIEM86XX_CONFIG_READ(w, word, 16)
++PCIEM86XX_CONFIG_READ(l, dword, 32)
++                                                                                
++PCIEM86XX_CONFIG_WRITE(b, byte, 8)
++PCIEM86XX_CONFIG_WRITE(w, word, 16)
++PCIEM86XX_CONFIG_WRITE(l, dword, 32)
++
++static void tango2_pci_busfault_intr(int irq, void *devinfo, struct pt_regs *regs);
++
++// return 0 if device not found
++// return vendorid:deviceid if device found
++static unsigned int tango2_pci_select(int idsel)
++{
++    unsigned int data, pciid;
++                                                                                
++    g_last_idsel = idsel;
++    gbus_write_uint16(pGBus, REG_BASE_host_interface + PCI_host_reg2, idsel << 8);
++    pciid = __raw_readl(tango2_pci_config_base);
++    data = (gbus_read_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3) >> 1) & 0x3;
++                                                                                
++    if (data == 0) {
++        return pciid;
++    } else {
++        // clears PCI bus fault flags
++        gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 1);
++        gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 0);
++        return 0;
++    }
++}
++
++static int __init tango2_pci_init(void)
++{
++	int i, idsel; 
++	unsigned pciid = 0;
++
++    // Set to PCI host
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_chip_is_host, 1);
++
++    // HOST_REG1 :
++    //   [31:16] : # of PCI retry cycle = 0xffff (default = 0xff)
++    //   [8] : host Super Request = 0
++    //   [3:0] arbitration level = 0x00 (Level 1)
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_host_reg1,
++		0xffff0000 | PCIEM86XX_ARBITER_LEVEL);
++
++    // PCI_CTRL1 :
++    //   [17] : enable "Memory Read Multiple" and "Memory Read Line"
++    //   [16] [7:0] : enable "prefetch" for PCI slave regions 2..7
++    //   [17] : Always enabled
++    //   [18] : additional bit for Tango. Long PCI memory read burst
++//	gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_pcictrl_reg1, 0x000700fc);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_pcictrl_reg1, 0x00030000);
++
++    // PCI_CTRL2 :
++    //   [18] : fast back-to-back capable = 0 (default)
++    //   [17] : read FIFO level = 1 (8 level deep, default)
++    //   [16] : discard timer enable = 1 (default)
++    //   [15:8] : subs latency = 0x06 (default = 0x08)
++    //   [7:0] : initial latency = 0x0d (default = 0x0b)
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_pcictrl_reg2, 0x0003060d);
++
++    // PCI_CTRL3 :
++    //   [16] : slave abort clear = 0
++    //   [10:8] : abort interrupt enable = 0 (default)
++    //   [2:0] : abort status = 0
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_pcictrl_reg3, 0);
++
++    // clear PCI bus fault
++    if (((gbus_read_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3) >> 1) & 0x3) != 0) {
++	gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 1);
++	gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 0);
++    }
++
++    // Setting pci_configuration_vld 
++    gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 2, 1);
++
++    // grant timeout
++    gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_host_reg3, PCIEM86XX_ARBITER_GRANTTIMEOUT);
++    gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_host_reg5, PCIEM86XX_ARBITER_GRANTTIMEOUT & 0x000000ff);
++                                                                                
++    // initialize arbiter
++    gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_host_reg4, 0);
++
++    // detect each agent
++    memset(&g_idsel_func_exist[0], 0, sizeof(int) * PCIEM86XX_IDSEL_MAX * 8);
++
++    /* Briefly scanning the bus for devices */
++    for (idsel = 1; idsel < PCIEM86XX_IDSEL_MAX; ++idsel) {
++        for (i = 1; i <= 3; ++i) {
++            if ((pciid = tango2_pci_select(idsel)) != 0)
++                break;
++        }
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++    	if (tango2_pcidev_enabled(idsel) == 0)
++      	    g_idsel_exist[idsel] = pciid = 0;
++	else
++            g_idsel_exist[idsel] = (pciid == 0) ? 0 : 1;
++#else
++        g_idsel_exist[idsel] = (pciid == 0) ? 0 : 1;
++#endif
++	if (pciid != 0) {
++	    printk("PCI: found device IDSEL = %d\n", idsel);
++	    for (i = idsel * 8; i < (idsel + 1) * 8; i++)
++		g_idsel_func_exist[i] = 1;
++	}
++    }
++
++    // Initialize IDSEL 0 - EM86XX as a PCI slave
++    for (i = 1; i <= 3; ++i) {
++        if ((pciid = tango2_pci_select(0)) != 0)
++            break;
++        printk("PCI: Probing EM86XX at IDSEL 0, retry = %d\n", i);
++    }
++
++    if (pciid == 0) {
++        printk("PCI: Can't initialize EM86XX as a PCI slave\n");
++	goto pci_init_end;
++    } else {
++        /* Start configuring memory spaces .. */
++        unsigned long memsize, regsize, membase;
++
++	g_pcimem_phyaddr = PHYSADDR(em8xxx_kmem_start);
++
++        // set PCI memory size to maximum, so the PCI memory will cover the
++        // whole memory if the total DRAM size is smaller than 112MB.
++        // maximum = 128MB => 16MB per region => DMA memory = 16 * 7 = 112MB
++        // But the current code doesn't care 2nd DRAM controller.
++        gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_REG3, 0x7);
++                                                                                
++        memsize = gbus_read_uint32(pGBus, REG_BASE_host_interface + PCI_REG3) & 0x07;
++        memsize = 1 << memsize;
++        regsize = (memsize << 20) >> 3; // memory size / 8
++
++        // pci command
++        __raw_writew(PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER, tango2_pci_config_base + PCI_COMMAND);
++
++        // base address 0
++        __raw_writel(g_pcimem_busaddr, tango2_pci_config_base + PCI_BASE_ADDRESS_0);
++                                                                                
++        // PCI slave access
++        // region 0 (R) : Configuration area
++        // region 1 - 7: mapped to DRAM starting from DRAM_BASE
++        g_pcimem_busaddr += (regsize * 1);
++        printk("PCI: Configured SMP863x as PCI slave with %dMB PCI memory\n", memsize);
++        membase = PHYSADDR(em8xxx_kmem_start);
++        g_pcimem_phyaddr = membase;
++        g_pcimem_phyaddr_end = g_pcimem_phyaddr + em8xxx_kmem_size;
++        for (i = 1; i < 8; ++i) {
++            // PCI region base registers should contain low address
++            gbus_write_uint32(pGBus, REG_BASE_host_interface + PCI_REGION_0_BASE + (i * 4), PHYSADDR(membase));
++            membase += regsize;
++        }
++        if (g_pcimem_phyaddr_end > membase)
++            g_pcimem_phyaddr_end = membase;
++        printk("PCI: Region size is %dKB\n", regsize >> 10);
++        printk("PCI: Map DMA memory 0x%08x-0x%08x for PCI at 0x%08x\n",
++            g_pcimem_phyaddr, g_pcimem_phyaddr_end, g_pcimem_busaddr);
++    }
++
++pci_init_end:
++
++    return(0);
++}
++
++static void tango2_pci_busfault_intr(int irq, void *devinfo, struct pt_regs *regs)
++{
++    static char *s_fault_reason[] = {
++        "OK", "Master Abort", "Retry timer expired", "Unknown" };
++                                                                                
++    static int s_faultcount = 0;
++    unsigned int data;
++                                                                                
++    data = (gbus_read_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3) >> 1) & 3;
++                                                                                
++    if (data == 1) {
++        printk("GPF: pid(%d, <%s>), EPC=0x%08lx\n", current->pid, current->comm, regs->cp0_epc);
++    } else
++        printk("PCI: PCI bus fault (%d): %s", ++s_faultcount, s_fault_reason[data]);
++
++    // clears PCI bus fault flags
++    gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 1);
++    gbus_write_uint8(pGBus, REG_BASE_host_interface + PCI_host_reg2 + 3, 0);
++}
++
++void __init tango2_pcibios_init(void)
++{
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	if (tango2_pci_host_enabled() == 0)
++		return;
++#endif
++
++	tango2_pci_config_base = (unsigned long)ioremap(MEMORY_BASE_PCI_CONFIG, PCIEM86XX_IDSEL_MAX * 0x800);
++	tango2_pci_io_base = (unsigned long)ioremap(MEMORY_BASE_PCI_IO, 0x08000000);
++//	tango2_pci_mem_base = (unsigned long)ioremap(MEMORY_BASE_PCI_MEMORY, 0x10000000); /* should be 0x20000000 */
++
++	printk("Remapping PCI config space 0x%08lx to 0x%08lx, size 0x%x\n", 
++		MEMORY_BASE_PCI_CONFIG, tango2_pci_config_base, PCIEM86XX_IDSEL_MAX * 0x800);
++	printk("Remapping PCI I/O space 0x%08lx to 0x%08lx, size 0x%x\n", 
++		MEMORY_BASE_PCI_IO, tango2_pci_io_base, 0x08000000);
++//	printk("Remapping PCI memory space 0x%08lx to 0x%08lx, size 0x%x\n", 
++//		MEMORY_BASE_PCI_MEMORY, tango2_pci_mem_base, 0x10000000);
++
++	/* The base address for MIPS I/O port, which will be used by
++	   I/O functions such like inb(), outb(), ...  */
++	set_io_port_base(tango2_pci_io_base);
++
++	tango2_pci_init();
++
++        request_irq(LOG2_CPU_PCI_FAULT_INT + IRQ_CONTROLLER_IRQ_BASE, tango2_pci_busfault_intr, SA_SHIRQ, "TANGO2 PCI HOST", tango2_pci_busfault_intr);
++}
++
++unsigned long tango2_virt_to_bus(unsigned long virt_addr)
++{
++    if ((PHYSADDR(virt_addr) < g_pcimem_phyaddr) || (PHYSADDR(virt_addr) >= g_pcimem_phyaddr_end))
++	printk("virt2bus: Not a dma-able address: 0x%08x\n", virt_addr); 
++    return((unsigned long)(PHYSADDR(virt_addr)-g_pcimem_phyaddr+g_pcimem_busaddr));
++}
++
++unsigned long tango2_bus_to_virt(unsigned long bus_addr)
++{
++    if ((bus_addr < g_pcimem_busaddr) || (bus_addr >= (g_pcimem_busaddr + (g_pcimem_phyaddr_end - g_pcimem_phyaddr)))) 
++	printk("bus2virt: Not a valid bus address: 0x%08x\n", bus_addr);
++    return((unsigned long)(bus_addr-g_pcimem_busaddr+g_pcimem_phyaddr));
++}
++
++EXPORT_SYMBOL(tango2_virt_to_bus);
++EXPORT_SYMBOL(tango2_bus_to_virt);
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/pci_fixups.c linuxmips-2.4.30/arch/mips/tango2/pci_fixups.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/pci_fixups.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/pci_fixups.c	2007-01-09 13:01:43.000000000 -0800
+@@ -0,0 +1,70 @@
++
++/*****************************************
++ Copyright © 2001-2003  
++ Sigma Designs, Inc. All Rights Reserved
++ Proprietary and Confidential
++ *****************************************/
++/**
++  @file   pci_fixups.c
++  @brief  
++
++  PCI support (fixups) for Tango2.
++
++  @author YH Lin
++  @date   2005-01-20
++*/
++
++#include <linux/types.h>
++#include <linux/pci.h>
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/pci_ids.h>
++
++#include <asm/tango2/rmdefs.h>
++#include <asm/tango2/hardware.h>
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++extern int tango2_pcidev_irq_map(const int pci_idsel, const int int_num);
++#endif
++
++extern unsigned short get_gt_devid(void);
++
++void __init pcibios_fixup_resources(struct pci_dev *dev)
++{
++}
++
++void __init pcibios_fixup(void)
++{
++}
++
++void __init pcibios_fixup_irqs(void)
++{
++	struct pci_dev *dev;
++
++	pci_for_each_dev(dev) {
++		if (dev->bus->number != 0)
++			return;
++		else {
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++			unsigned int slot = PCI_SLOT(dev->devfn);
++			unsigned char irqpin;
++
++			pci_read_config_byte(dev, PCI_INTERRUPT_PIN, &irqpin);
++			if (irqpin) { /* This device is using interrupt */
++				dev->irq = tango2_pcidev_irq_map(slot, irqpin - 1);
++				pci_write_config_byte(dev, PCI_INTERRUPT_LINE, dev->irq);
++			}
++#else
++			/* for generic */
++			dev->irq = IRQ_PCI;
++			pci_write_config_byte(dev, PCI_INTERRUPT_LINE, dev->irq);
++#endif
++		}
++	}
++}
++
++unsigned int pcibios_assign_all_busses(void)
++{
++	return 0;
++}
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/setup.c linuxmips-2.4.30/arch/mips/tango2/setup.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/setup.c	2007-01-09 12:56:44.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/setup.c	2007-01-09 13:01:43.000000000 -0800
+@@ -35,6 +35,7 @@
+ #include <asm/tango2/rmdefs.h>
+ 
+ extern int em86xx_sbox_init(void);
++extern void pci_disable_device_all(void);
+  
+ void tango2_restart(char *command)
+ {
+@@ -46,6 +47,11 @@
+ 	/* Disable timer */
+ 	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_time0_ctrl, 0);
+ #endif
++#ifdef CONFIG_PCI
++	/* Disable all pci devices,
++	 * for reboot problem after loading usb drivers*/
++	pci_disable_device_all();
++#endif
+ 
+ #if (EM86XX_REVISION > 3)
+         /* Resetting Tango2 EHCI */
+@@ -236,6 +242,10 @@
+                                                                                  
+  	// use GPIO#8, IRQ 14 for PCI IRQ, ISA IDE uses GPIO#6.
+  	gbus_write_uint32(pGBus, REG_BASE_system_block + SYS_gpio_int, 0x0607080d);
++ 
++	// Set the PCI IRQ to be active low, level triggered
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_edge_config_rise_set, 1 << LOG2_CPU_PCI_INTB);
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_edge_config_fall_set, 1 << LOG2_CPU_PCI_INTB);
+ #endif
+ }
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/pci/pci.c linuxmips-2.4.30/drivers/pci/pci.c
+--- linuxmips-2.4.30.ref/drivers/pci/pci.c	2004-11-18 16:28:41.000000000 -0800
++++ linuxmips-2.4.30/drivers/pci/pci.c	2007-01-09 13:01:43.000000000 -0800
+@@ -28,6 +28,10 @@
+ #include <asm/page.h>
+ #include <asm/dma.h>	/* isa_dma_bridge_buggy */
+ 
++#ifdef CONFIG_TANGO2
++#include <asm/tango2/hardware.h>
++#endif
++
+ #undef DEBUG
+ 
+ #ifdef DEBUG
+@@ -36,6 +40,8 @@
+ #define DBG(x...)
+ #endif
+ 
++int pci_enabled = 1; /* By default it's enabled */
++
+ LIST_HEAD(pci_root_buses);
+ LIST_HEAD(pci_devices);
+ 
+@@ -1077,12 +1083,18 @@
+ 		if (l == 0xffffffff)
+ 			l = 0;
+ 		if ((l & PCI_BASE_ADDRESS_SPACE) == PCI_BASE_ADDRESS_SPACE_MEMORY) {
++#ifdef CONFIG_TANGO2
++			l += MEMORY_BASE_PCI_MEMORY;
++#endif
+ 			sz = pci_size(l, sz, PCI_BASE_ADDRESS_MEM_MASK);
+ 			if (!sz)
+ 				continue;
+ 			res->start = l & PCI_BASE_ADDRESS_MEM_MASK;
+ 			res->flags |= l & ~PCI_BASE_ADDRESS_MEM_MASK;
+ 		} else {
++#ifdef CONFIG_TANGO2
++			l += MEMORY_BASE_PCI_CONFIG;
++#endif
+ 			sz = pci_size(l, sz, PCI_BASE_ADDRESS_IO_MASK & 0xffff);
+ 			if (!sz)
+ 				continue;
+@@ -1618,6 +1630,28 @@
+ 	return b;
+ }
+ 
++/* To shutoff all devices on a given bus */
++static void pci_disable_device_bus(struct pci_bus *bus)
++{
++	struct list_head *list;
++
++	list_for_each(list, &bus->devices) {
++		pci_disable_device(pci_dev_b(list));
++	}
++}
++
++/* To shutoff all PCI devices on all buses */
++void pci_disable_device_all(void)
++{
++	struct list_head *list;
++	struct pci_bus *bus;
++
++	list_for_each(list, &pci_root_buses) {
++		bus = pci_bus_b(list);
++		pci_disable_device_bus(bus);
++	}
++}
++
+ #ifdef CONFIG_PM
+ 
+ /*
+@@ -2129,15 +2163,17 @@
+ {
+ 	struct pci_dev *dev;
+ 
+-	pcibios_init();
++	if (pci_enabled != 0) {
++		pcibios_init();
+ 
+-	pci_for_each_dev(dev) {
+-		pci_fixup_device(PCI_FIXUP_FINAL, dev);
+-	}
++		pci_for_each_dev(dev) {
++			pci_fixup_device(PCI_FIXUP_FINAL, dev);
++		}
+ 
+ #ifdef CONFIG_PM
+-	pm_register(PM_PCI_DEV, 0, pci_pm_callback);
++		pm_register(PM_PCI_DEV, 0, pci_pm_callback);
+ #endif
++	}
+ }
+ 
+ static int __devinit pci_setup(char *str)
+@@ -2167,6 +2203,7 @@
+ EXPORT_SYMBOL(pci_root_buses);
+ EXPORT_SYMBOL(pci_enable_device_bars);
+ EXPORT_SYMBOL(pci_enable_device);
++EXPORT_SYMBOL(pci_disable_device_all);
+ EXPORT_SYMBOL(pci_disable_device);
+ EXPORT_SYMBOL(pci_find_capability);
+ EXPORT_SYMBOL(pci_release_regions);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/io.h linuxmips-2.4.30/include/asm-mips/io.h
+--- linuxmips-2.4.30.ref/include/asm-mips/io.h	2007-01-09 12:54:45.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/io.h	2007-01-09 13:01:43.000000000 -0800
+@@ -24,6 +24,12 @@
+ #define bus_to_baddr(bus, addr)	(bus_to_baddr[(bus)->number] + (addr))
+ #define baddr_to_bus(bus, addr)	((addr) - bus_to_baddr[(bus)->number])
+ #define __swizzle_addr_w(port)	((port) ^ 2)
++#elif defined(CONFIG_TANGO2) && defined(CONFIG_PCI)
++unsigned long tango2_virt_to_bus(unsigned long virt_addr);
++unsigned long tango2_bus_to_virt(unsigned long bus_addr);
++#define bus_to_baddr(bus, addr)	tango2_virt_to_bus(addr)
++#define baddr_to_bus(bus, addr)	tango2_bus_to_virt(addr)
++#define __swizzle_addr_w(port)	(port)
+ #else
+ #define bus_to_baddr(bus, addr)	(addr)
+ #define baddr_to_bus(bus, addr)	(addr)
+@@ -310,6 +316,181 @@
+ #define SLOW_DOWN_IO
+ #endif
+ 
++#if defined(CONFIG_TANGO2) && defined(CONFIG_PCI)
++//#define TANGO2_PCI_IO          MEMORY_BASE_PCI_IO  /* PCi I/O space */
++//#define TANGO2_PCI_MEM         MEMORY_BASE_PCI_MEMORY  /* PCI Memory Base */
++#define TANGO2_PCI_IO          0x58000000UL
++#define TANGO2_PCI_MEM         0x60000000UL
++
++#define outb(val,port)							\
++do {									\
++	u32 p;								\
++	if (((port) >= TANGO2_PCI_IO) && ((port) < TANGO2_PCI_MEM))	\
++ 		p = (port) - TANGO2_PCI_IO;				\
++ 	else {								\
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); \
++ 		p = (port);						\
++ 	}								\
++ 	*(volatile u8 *)(mips_io_port_base + (p)) = (val);		\
++	__sync();                                                       \
++} while(0)
++ 
++#define outw(val,port)							\
++do {									\
++ 	u32 p;								\
++ 	if (((port) >= TANGO2_PCI_IO) && ((port) < TANGO2_PCI_MEM))	\
++ 		p = (port) - TANGO2_PCI_IO;				\
++ 	else {								\
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); \
++ 		p = (port);						\
++ 	}								\
++ 	*(volatile u16 *)(mips_io_port_base + __swizzle_addr_w(p)) =	\
++ 		__ioswab16(val);					\
++	__sync();                                                       \
++} while(0)
++ 
++#define outl(val,port)							\
++do {									\
++ 	u32 p;								\
++ 	if (((port) >= TANGO2_PCI_IO) && ((port) < TANGO2_PCI_MEM))	\
++ 		p = (port) - TANGO2_PCI_IO;				\
++ 	else {								\
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); \
++ 		p = (port);						\
++ 	}								\
++ 	*(volatile u32 *)(mips_io_port_base + (p)) = __ioswab32(val);   \
++	__sync();                                                       \
++} while(0)
++ 
++#define outb_p(val,port)						\
++do {									\
++ 	u32 p;								\
++ 	if (((port) >= TANGO2_PCI_IO) && ((port) < TANGO2_PCI_MEM))	\
++ 		p = (port) - TANGO2_PCI_IO;				\
++ 	else {								\
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); \
++ 		p = (port);						\
++ 	}								\
++ 	*(volatile u8 *)(mips_io_port_base + (p)) = (val);		\
++	__sync();                                                       \
++ 	SLOW_DOWN_IO;							\
++} while(0)
++ 
++#define outw_p(val,port)						\
++do {									\
++ 	u32 p;								\
++ 	if (((port) >= TANGO2_PCI_IO) && ((port) < TANGO2_PCI_MEM))	\
++ 		p = (port) - TANGO2_PCI_IO;				\
++ 	else {								\
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); \
++ 		p = (port);						\
++ 	}								\
++ 	*(volatile u16 *)(mips_io_port_base + __swizzle_addr_w(p)) =	\
++ 		__ioswab16(val);					\
++	__sync();                                                       \
++ 	SLOW_DOWN_IO;							\
++} while(0)
++ 
++#define outl_p(val,port)						\
++do {									\
++ 	u32 p;								\
++ 	if (((port) >= TANGO2_PCI_IO) && ((port) < TANGO2_PCI_MEM))	\
++ 		p = (port) - TANGO2_PCI_IO;				\
++ 	else {								\
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); \
++ 		p = (port);						\
++ 	}								\
++ 	*(volatile u32 *)(mips_io_port_base + (p)) = __ioswab32(val);   \
++	__sync();                                                       \
++ 	SLOW_DOWN_IO;							\
++} while(0)
++ 
++static inline unsigned char inb(unsigned long port)
++{
++	u32 p;								
++ 	if ((port >= TANGO2_PCI_IO) && (port < TANGO2_PCI_MEM))	
++ 		p = port - TANGO2_PCI_IO;				
++ 	else {								
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); 
++ 		p = port;						
++ 	}							
++ 	return *(volatile u8 *)(mips_io_port_base + p);
++}
++ 
++static inline unsigned short inw(unsigned long port)
++{
++ 	u32 p;								
++	if ((port >= TANGO2_PCI_IO) && (port < TANGO2_PCI_MEM))	
++ 		p = port - TANGO2_PCI_IO;				
++ 	else {								
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); 
++ 		p = port;						
++ 	}							
++ 	p = __swizzle_addr_w(p);
++ 
++ 	return __ioswab16(*(volatile u16 *)(mips_io_port_base + p));
++}
++ 
++static inline unsigned int inl(unsigned long port)
++{
++ 	u32 p;								
++ 	if ((port >= TANGO2_PCI_IO) && (port < TANGO2_PCI_MEM))	
++ 		p = port - TANGO2_PCI_IO;				
++ 	else {								
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); 
++ 		p = port;						
++ 	}							
++ 	return __ioswab32(*(volatile u32 *)(mips_io_port_base + p));
++}
++ 
++static inline unsigned char inb_p(unsigned long port)
++{
++ 	u8 __val;
++ 	u32 p;								
++ 	if ((port >= TANGO2_PCI_IO) && (port < TANGO2_PCI_MEM))	
++ 		p = port - TANGO2_PCI_IO;				
++ 	else {								
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); 
++ 		p = port;						
++ 	}							
++ 	__val = *(volatile u8 *)(mips_io_port_base + p);
++ 	SLOW_DOWN_IO;
++ 
++ 	return __val;
++}
++ 
++static inline unsigned short inw_p(unsigned long port)
++{
++ 	u16 __val;
++ 	u32 p;								
++ 	if ((port >= TANGO2_PCI_IO) && (port < TANGO2_PCI_MEM))	
++ 		p = port - TANGO2_PCI_IO;				
++ 	else {								
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); 
++ 		p = port;						
++ 	}							
++ 	p = __swizzle_addr_w(p);
++ 	__val = *(volatile u16 *)(mips_io_port_base + p);
++ 	SLOW_DOWN_IO;
++ 
++ 	return __ioswab16(__val);
++}
++ 
++static inline unsigned int inl_p(unsigned long port)
++{
++ 	u32 __val;
++ 	u32 p;								
++ 	if ((port >= TANGO2_PCI_IO) && (port < TANGO2_PCI_MEM))	
++ 		p = port - TANGO2_PCI_IO;				
++ 	else {								
++ 		printk("Port operation exceed Tango2 PCI IO space 0x%08x\n", (port)); 
++ 		p = port;						
++ 	}							
++ 	__val = *(volatile u32 *)(mips_io_port_base + p);
++ 	SLOW_DOWN_IO;
++ 	return __ioswab32(__val);
++}
++#else /* !CONFIG_TANGO2 || !CONFIG_PCI */
+ #define outb(val,port)							\
+ do {									\
+ 	*(volatile u8 *)(mips_io_port_base + (port)) = (val);		\
+@@ -391,6 +572,7 @@
+ 	SLOW_DOWN_IO;
+ 	return __ioswab32(__val);
+ }
++#endif /* CONFIG_TANGO2 && CONFIG_PCI */
+ 
+ static inline void __outsb(unsigned long port, void *addr, unsigned int count)
+ {
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/pci.h linuxmips-2.4.30/include/asm-mips/pci.h
+--- linuxmips-2.4.30.ref/include/asm-mips/pci.h	2003-11-16 17:07:45.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/pci.h	2007-01-09 13:01:43.000000000 -0800
+@@ -49,6 +49,14 @@
+ #define PCIBIOS_MIN_MEM		0x1000000
+ #endif
+ 
++#if defined(CONFIG_TANGO2)
++#include <asm/tango2/hardware.h>
++#undef PCIBIOS_MIN_IO
++#undef PCIBIOS_MIN_MEM
++#define PCIBIOS_MIN_IO          MEMORY_BASE_PCI_IO
++#define PCIBIOS_MIN_MEM         (MEMORY_BASE_PCI_MEMORY + 0x00100000)   /* avoid 0x00000000 on bus addr */
++#endif
++
+ struct pci_dev;
+ 
+ /*
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1010.pci.patch linuxmips-2.4.30/README.1010.pci.patch
+--- linuxmips-2.4.30.ref/README.1010.pci.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1010.pci.patch	2007-01-09 13:04:38.000000000 -0800
+@@ -0,0 +1,21 @@
++Feature:
++--------
++PCI host support for SMP863x.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++1005
++1006
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

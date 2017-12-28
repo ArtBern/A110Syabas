@@ -1,0 +1,1427 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/char/Config.in linuxmips-2.4.30/drivers/char/Config.in
+--- linuxmips-2.4.30.ref/drivers/char/Config.in	2007-05-11 15:58:31.000000000 -0700
++++ linuxmips-2.4.30/drivers/char/Config.in	2007-05-11 15:59:58.000000000 -0700
+@@ -196,6 +196,9 @@
+ if [ "$CONFIG_CPU_VR41XX" = "y" ]; then
+    bool 'NEC VR4100 series Keyboard Interface Unit Support ' CONFIG_VR41XX_KIU
+ fi
++if [ "$CONFIG_TANGO2_ES4" = "y" -o "$CONFIG_TANGO2_ES6" = "y" ]; then
++   tristate 'TANGO2 Smartcard support' CONFIG_TANGO2_SCARD
++fi
+ if [ "$CONFIG_TANGO2" = "y" ]; then
+    tristate 'TANGO2 IR remote support' CONFIG_TANGO2_IR
+ fi
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/char/Makefile linuxmips-2.4.30/drivers/char/Makefile
+--- linuxmips-2.4.30.ref/drivers/char/Makefile	2007-05-11 15:58:31.000000000 -0700
++++ linuxmips-2.4.30/drivers/char/Makefile	2007-05-11 15:59:58.000000000 -0700
+@@ -331,6 +331,7 @@
+ obj-$(CONFIG_8xx_WDT) += mpc8xx_wdt.o
+ obj-$(CONFIG_TANGO2_IR) += irkernel.o
+ obj-$(CONFIG_TANGO2_FIP) += fipkernel.o
++obj-$(CONFIG_TANGO2_SCARD) += sckernel.o
+ 
+ subdir-$(CONFIG_MWAVE) += mwave
+ ifeq ($(CONFIG_MWAVE),y)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/char/sckernel.c linuxmips-2.4.30/drivers/char/sckernel.c
+--- linuxmips-2.4.30.ref/drivers/char/sckernel.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/drivers/char/sckernel.c	2007-05-11 16:00:10.000000000 -0700
+@@ -0,0 +1,1343 @@
++/*****************************************
++ *  Copyright © 2001-2007
++ *  Sigma Designs, Inc. All Rights Reserved
++ *  Proprietary and Confidential
++ ******************************************/
++
++#include <linux/init.h>
++#include <linux/slab.h>
++#include <linux/irq.h>
++#include <linux/devfs_fs_kernel.h>
++#include <linux/poll.h>
++#include <linux/delay.h>
++
++#if !defined(CONFIG_TANGO2)
++#error "Unsupport architecture (TANGO2 only)."
++#elif (EM86XX_REVISION < 4)
++#error "Unsupport Tango2 chip (ES4 or above)."
++#endif
++
++#include <asm/io.h>
++#include <asm/tango2/rmdefs.h>
++#include <asm/tango2/tango2api.h>
++
++/* For general smart card implementation stuff */
++#include <asm/tango2/scard.h>
++
++// Use kernel timer implementation for polling the scard status
++// #define USE_KERNEL_TIMER
++
++// #define TEMP_WORKAROUND /* For temporary workaround */
++
++// #define SCARD_DEBUG /* Uncomment this for debug message */
++#define SCARD_ERRMSG /* Uncomment this for error message */
++#define SCARD_MSG /* Uncomment this for normal message */
++
++#ifdef SCARD_DEBUG
++#define DBG_PRINT	if (debug) printk
++#else
++static void inline DBG_PRINT(const char *x, ...) { ; }
++#endif /* SCARD_DEBUG */
++
++#ifdef SCARD_ERRMSG
++#define ERR_PRINT	printk
++#else
++static void inline ERR_PRINT(const char *x, ...) { ; }
++#endif /* SCARD_ERRMSG */
++
++#ifdef SCARD_MSG
++#define MSG_PRINT	printk
++#else
++static void inline MSG_PRINT(const char *x, ...) { ; }
++#endif /* SCARD_ERRMSG */
++
++#define	SCARD_BASE		(REG_BASE_cpu_block + 0xc300)
++#define SCARD_TX_BYTE_REG	(SCARD_BASE + 0x0000)
++#define SCARD_TX_WORD_REG	(SCARD_BASE + 0x0004)
++#define SCARD_TX_DWORD_REG	(SCARD_BASE + 0x0008)
++#define SCARD_RX_BYTE_REG	(SCARD_BASE + 0x0010)
++#define SCARD_RX_WORD_REG	(SCARD_BASE + 0x0014)
++#define SCARD_RX_DWORD_REG	(SCARD_BASE + 0x0018)
++#define SCARD_CLK_HIGH_VAL	(SCARD_BASE + 0x0020)
++#define SCARD_CLK_LOW_VAL	(SCARD_BASE + 0x0024)
++#define SCARD_TIMEOUT_LOAD	(SCARD_BASE + 0x0028)
++#define SCARD_PARAM_REG		(SCARD_BASE + 0x002c)
++#define SCARD_EGT_ETU_REG	(SCARD_BASE + 0x0030)
++#define SCARD_SOFT_OUT_REG	(SCARD_BASE + 0x0034)
++#define SCARD_SCARD_CTRL_REG	(SCARD_BASE + 0x0038)
++#define SCARD_STATE_REG		(SCARD_BASE + 0x003c)
++#define SCARD_INT_REG		(SCARD_BASE + 0x0040)
++#define SCARD_INTEN_REG		(SCARD_BASE + 0x0044)
++#define SCARD_ALT_ETU_REG	(SCARD_BASE + 0x0048)
++#define SCARD_STATUS_REG	(SCARD_BASE + 0x004c)
++#define SCARD_CRC_REG		(SCARD_BASE + 0x0050)
++#define SCARD_CRC_INIT_REG	(SCARD_BASE + 0x0054)
++
++#define RD_BUF_SIZE		256	/* Default read buffer size */
++#define WR_BUF_SIZE		256	/* Default write buffer size */
++#define ANS_STR_SIZE		512	/* Max. size of ans-to-reset string */
++#define DEF_FREQUENCY           2000000 /* Default operating frequency 2MHz */
++#define TIMEOUT                 ((((2 * HZ) / 1000) == 0) ? 1 : ((2 * HZ) / 1000))
++
++/* The scard control pins: can be board dependent */
++#ifndef TEMP_WORKAROUND
++#define SCARD_OFF_PIN           0  /* SCARD_CTL[0] */
++#define SCARD_5V_PIN            1  /* SCARD_CTL[1] */
++#define SCARD_CMD_PIN           2  /* SCARD_CTL[2] */
++#else
++#define SCARD_OFF_PIN           4
++#define SCARD_5V_PIN            2 
++#define SCARD_CMD_PIN           3
++#endif
++
++/* The major device number and name */
++#ifdef CONFIG_DEVFS_FS
++#define SCARD_DEV_MAJOR		0
++#else
++#define SCARD_DEV_MAJOR		127	/* May need to be changed?? */
++#endif
++#define SCARD_DEV_NAME		"scard"
++
++#define RST_WAIT		64	/* Wait time to drive RSTIN low */
++					/* Min. 50, Max. 130 */
++#define RST_WIDTH		1	/* Keep RSTIN for this long */
++
++#define TX_FIFO_SIZE            0x0f
++
++#define DRIVER_VERSION         "1.24"
++
++MODULE_DESCRIPTION("EM86xx smart card driver\n");
++MODULE_AUTHOR("TANGO15/TANGO2 standalone team");
++MODULE_LICENSE("GPL");
++
++MODULE_PARM(major_num, "i");
++MODULE_PARM(rd_buffer_size, "i");
++MODULE_PARM(wr_buffer_size, "i");
++MODULE_PARM(frequency, "i");
++MODULE_PARM(reverse_msb, "i");
++MODULE_PARM(reverse_pol, "i");
++MODULE_PARM(use_3v, "i");
++#ifdef SCARD_DEBUG
++MODULE_PARM(debug, "i");
++#endif
++static int rd_buffer_size = RD_BUF_SIZE;
++static int wr_buffer_size = WR_BUF_SIZE;
++static int frequency = DEF_FREQUENCY;
++static int reverse_msb = 0; /* By default, don't reverse MSB */
++static int reverse_pol = 0; /* By default, don't reverse polarity */
++static int use_3v = 1; /* By default, start with 3V */
++#ifdef SCARD_DEBUG
++static int debug = 1;
++#endif
++
++static unsigned long write_cnt = 0, read_cnt = 0;
++
++/* Wait queue, may be used if block mode is on */
++DECLARE_WAIT_QUEUE_HEAD(scard_rd_wq);
++
++/* The state for smart card */
++enum SCARD_STATE {
++	UNPWR_IDLE = 0,
++	ACTIVATE = 1,
++	COLD_RESET = 2,
++	PWR_IDLE = 3,
++	WARM_RESET = 4,
++	CLOCK_STOP = 5,
++	DEACTIVATE = 6,
++	UNKNOWN = 7,
++};
++
++/* If given state is persistent state? */
++#define PERSISTENT_STATE(x)	(((x) == UNPWR_IDLE) || ((x) == CLOCK_STOP) || ((x) == PWR_IDLE))
++
++/* Private data structure */
++struct scard_private {
++	unsigned char *rd_buffer;	/* Circular buffer for read */
++	unsigned char *wr_buffer;	/* Circular buffer for write */
++	unsigned rd_p_idx;		/* Index of producer */
++	unsigned rd_c_idx; 		/* Index of consumer */
++	unsigned wr_p_idx;		/* Index of producer */
++	unsigned wr_c_idx; 		/* Index of consumer */
++	unsigned ref_cnt;		/* Reference count */
++	spinlock_t lock;		/* Spin lock */
++	unsigned char b_mode;		/* Blocking mode or not */
++	unsigned long last_rd_jiffies;	/* Timestamp for last reception */
++	unsigned long last_wr_jiffies;	/* Timestamp for last reception */
++	atomic_t card_existed;		/* Is smart card existed? */
++	atomic_t state;			/* State? UNPWR_IDLE or PWR_IDLE */
++	atomic_t normal_mode;		/* Normal operation mode? */
++	int rev_msb;			/* Reverse MSB? */
++	int rev_pol;			/* Reverse polarity? */
++	int volt3;			/* 3V card? */
++	int clockstop;			/* clockstop supported */
++	int reset_cnt;                  /* reset counter */
++#ifndef USE_KERNEL_TIMER
++	int stop_thread;                
++#endif
++};
++
++/* Some prototypes */
++static int scard_open(struct inode *, struct file *);
++static int scard_release(struct inode *, struct file *);
++static int scard_read(struct file *, char *, size_t, loff_t *);
++static int scard_write(struct file *, const char *, size_t, loff_t *);
++static int scard_ioctl(struct inode *, struct file *, unsigned int, unsigned long);
++static unsigned int scard_poll(struct file *, struct poll_table_struct *);
++
++/* Global data */
++static struct scard_private scard_priv;
++static devfs_handle_t devfs_handle = NULL;
++static char *scard_devname = SCARD_DEV_NAME;
++static int major_num = SCARD_DEV_MAJOR;
++static int scard_irq = IRQ_CONTROLLER_IRQ_BASE + LOG2_CPU_SMARTCARD_INT;
++static int scard_5v_pin = SCARD_5V_PIN;
++static int scard_cmd_pin = SCARD_CMD_PIN;
++static int scard_off_pin = SCARD_OFF_PIN;
++
++/* For answer to reset */
++static atomic_t answer2reset;
++static unsigned char ans_string[ANS_STR_SIZE];
++static int ans_idx = 0;
++
++#if defined(CONFIG_TANGO2_XENV)
++extern unsigned int xenv_scard_5v_pin, xenv_scard_off_pin, xenv_scard_cmd_pin;
++#endif
++
++/* From smartcard spec. */
++static const unsigned fi_tab[16] = { 372, 372, 558, 744, 1116, 1488, 1860, 0, 0, 512, 768, 1024, 1536, 2048, 0, 0 };
++static const unsigned di_tab[16] = { 0, 1, 2, 4, 8, 16, 32, 0, 12, 20, 0, 0, 0, 0, 0, 0 };
++
++#ifdef USE_KERNEL_TIMER
++/* Timer */
++static struct timer_list scard_timer;
++#endif
++
++static struct file_operations scard_fops = {
++	open: scard_open,
++	read: scard_read,
++	write: scard_write,
++	ioctl: scard_ioctl,
++	poll: scard_poll,
++	release: scard_release,
++	owner: THIS_MODULE,
++};
++
++/* Prototype */
++static void scard_reset(struct scard_private *priv, int cold);
++
++static inline unsigned int scard_ctrlpin_read(unsigned int pin)
++{
++#ifndef TEMP_WORKAROUND
++	unsigned int val = (gbus_read_uint32(pGBus, REG_BASE_cpu_block + CPU_uart0_gpio_data) >> 16) & 0x7;
++	return((val >> pin) & 0x1);
++#else
++	return(em86xx_gpio_read(pin));
++#endif
++}
++
++static inline void scard_ctrlpin_write(int pin, unsigned int val)
++{
++#ifndef TEMP_WORKAROUND
++	unsigned int v = (gbus_read_uint32(pGBus, REG_BASE_cpu_block + CPU_uart0_gpio_data) >> 16) & 0x7;
++
++	v &= ~(1 << pin);
++	v |= ((val & 0x1) << pin);
++
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_uart0_gpio_data, v << 16);
++#else
++	em86xx_gpio_write(pin, (val & 0x1));
++#endif
++}
++
++/* Read data from device */
++static void scard_read_device(struct scard_private *priv)
++{
++	unsigned char data = 0;
++	unsigned rd_pidx;
++	unsigned int fifo_size;
++	unsigned int i;
++
++	spin_lock(&priv->lock);
++	if ((fifo_size = ((gbus_read_uint32(pGBus, SCARD_STATE_REG) >> 20) & 0x1f)) == 0) {
++		DBG_PRINT("%s: RX FIFO empty\n", scard_devname);
++		goto out;
++	}
++
++	/* Read from FIFO into driver's buffer */
++	for (i = 0; i < fifo_size; i++) {
++		data = gbus_read_uint32(pGBus, SCARD_RX_BYTE_REG);
++		read_cnt++;
++
++		DBG_PRINT("%s: got data 0x%x (cnt: %d)\n", scard_devname, data, read_cnt);
++		rd_pidx = priv->rd_p_idx;	/* Save the old index before proceeding */
++
++		/* Save it to buffer */
++		if (((priv->rd_p_idx + 1) % rd_buffer_size) == priv->rd_c_idx) {
++			ERR_PRINT("%s: read buffer full\n", scard_devname);
++			break;
++		}
++
++		priv->rd_buffer[priv->rd_p_idx] = data;
++		priv->rd_p_idx = (priv->rd_p_idx + 1) % rd_buffer_size;
++
++		/* Buffer was empty and block mode is on, wake up the reader */
++		if ((priv->b_mode != 0) && (priv->rd_c_idx == rd_pidx)) 
++			wake_up_interruptible(&scard_rd_wq);
++	}
++	priv->last_rd_jiffies = jiffies;
++
++out:
++	spin_unlock(&priv->lock);
++}
++
++/* Wrtie data to device */
++static void scard_write_device(struct scard_private *priv)
++{
++	unsigned char data;
++	unsigned int fifo_size;
++	unsigned long flags;
++	unsigned int i;
++
++	spin_lock_irqsave(&priv->lock, flags);
++
++	if (priv->wr_c_idx == priv->wr_p_idx) {
++	        goto out; /* Empty buffer */
++	} else if ((fifo_size = ((gbus_read_uint32(pGBus, SCARD_STATE_REG) >> 12) & 0x1f)) == TX_FIFO_SIZE) {
++		DBG_PRINT("%s: TX FIFO full (%d)\n", scard_devname, fifo_size);
++		goto out;
++	} else if (fifo_size > TX_FIFO_SIZE) {
++		ERR_PRINT("%s: TX FIFO overflow (%d)\n", scard_devname, fifo_size);
++		goto out;
++	}
++
++	for (i = 0; i < (TX_FIFO_SIZE - fifo_size); i++) {
++		if (priv->wr_c_idx == priv->wr_p_idx) 
++			break; /* Empty buffer */
++
++		data = priv->wr_buffer[priv->wr_c_idx];
++		priv->wr_c_idx = (priv->wr_c_idx + 1) % wr_buffer_size;
++		gbus_write_uint32(pGBus, SCARD_TX_BYTE_REG, data);
++		write_cnt++;
++
++		DBG_PRINT("%s: written data 0x%x (fifo: %d, cnt: %d)\n", scard_devname, data, fifo_size, write_cnt);
++	}
++
++#ifdef SCARD_DEBUG
++	if (fifo_size >= TX_FIFO_SIZE)
++		DBG_PRINT("%s: TX FIFO full %d\n", scard_devname, fifo_size);
++#endif
++	
++	priv->last_wr_jiffies = jiffies;
++
++out:
++	spin_unlock_irqrestore(&priv->lock, flags);
++}
++
++/* ISR for Smart card device */
++static void scard_isr(int irq, void *dev_id, struct pt_regs *regs)
++{
++	struct scard_private *priv = (struct scard_private *)dev_id;
++	unsigned long status = 0;
++
++	if (priv != &scard_priv)	/* Paranoid check */
++		return;
++	else if ((status = gbus_read_uint32(pGBus, SCARD_INT_REG)) == 0)
++		return;
++
++	gbus_write_uint32(pGBus, SCARD_INT_REG, status);
++
++	if (atomic_read(&(priv->normal_mode)) != 0) {
++		if (status & (1 << 2)) { 
++			/* For RX interrupts */
++			scard_read_device(priv);
++		}
++		if (status & (1 << 0)) {
++			/* For TX interrupts */
++			scard_write_device(priv);
++		}
++		if (status & ((1 << 1) | (1 << 3) | (1 << 4) | (1 << 5))) {
++			ERR_PRINT("%s: error interrupt (status: 0x%08lx)\n", scard_devname, status);
++			/* TODO: do WARM_RESET, reset/un-reset FIFO ?? */
++		}
++	} else {
++		/* Initializing connection, handle "answer to reset" */
++		atomic_set(&answer2reset, 1);
++		if (status & (1 << 0)) {
++			/* For TX interrupts */
++			DBG_PRINT("TX ..\n");
++		}
++		if (status & (1 << 2)) { 
++			unsigned long data;
++
++			while (((gbus_read_uint32(pGBus, SCARD_STATE_REG) >> 20) & 0x1f) != 0) {
++				/* For RX interrupts */
++				data = gbus_read_uint32(pGBus, SCARD_RX_BYTE_REG); 
++				if (ans_idx >= ANS_STR_SIZE) {
++					gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0); /* disable interrupt */
++					break;
++				}
++				ans_string[ans_idx++] = data & 0xff;
++			}
++		}
++		if (status & ((1 << 1) | (1 << 3) | (1 << 4) | (1 << 5))) {
++			gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0); /* disable interrupt */
++			DBG_PRINT("%s: error interrupt (status: 0x%08lx)\n", scard_devname, status);
++			DBG_PRINT("%s: SCARD_CTRL : 0x%08x\n", scard_devname, gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG));
++		}
++	}
++
++	return;
++}
++
++/* Check if scard existed */
++static int is_card_present(struct scard_private *priv)
++{
++	/* Low: not present, high otherwise */
++	return((scard_ctrlpin_read(scard_off_pin) == 0) ? 0 : 1);
++}
++
++/* Parse and handle "answer to reset" string */
++static int parse_ans2reset(struct scard_private *priv, int v3, const unsigned char str[], const int len)
++{
++	int idx = 2, i = 1;
++	int is_ta = 0, is_tb = 0, is_tc = 0, is_td = 0, is_tck = 0, k = 0;
++	unsigned char ta = 0xff, tb = 0xff, tc = 0xff, td = 0xff, tx = 0xff;
++	unsigned char tck = 0xff;
++	unsigned char t_array[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
++
++	priv->volt3 = v3;
++	switch(str[0]) {
++		case 0x3b: /* Correct config detected */
++		case 0x3f:
++			DBG_PRINT("Correct ts detected 0x%x\n", str[0]);
++			break;
++		case 0xc4:
++		case 0xc0:
++			DBG_PRINT("Wrong ts detected 0x%x (need to reverse the polarity)\n", str[0]);
++			priv->rev_pol = 1;
++			goto reset_needed;
++			break;
++		case 0xdc:
++		case 0xfc:
++			DBG_PRINT("Wrong ts detected 0x%x (need to reverse the MSB)\n", str[0]);
++			priv->rev_msb = 1;
++			goto reset_needed;
++			break;
++		case 0x23:
++		case 0x03:
++			DBG_PRINT("Wrong ts detected 0x%x (need to reverse the polarity and MSB)\n", str[0]);
++			priv->rev_msb = priv->rev_pol = 1;
++			goto reset_needed;
++			break;
++		default:
++			priv->reset_cnt++;
++			if (priv->reset_cnt > 3)
++				goto not_valid;
++			else {
++				switch(priv->reset_cnt) {
++					case 1: priv->rev_pol = (priv->rev_pol != 0) ? 0 : 1;
++						break;
++					case 2: priv->rev_msb = (priv->rev_msb != 0) ? 0 : 1;
++						break;
++					case 3: priv->rev_pol = (priv->rev_pol != 0) ? 0 : 1;
++						priv->rev_msb = (priv->rev_msb != 0) ? 0 : 1;
++						break;
++				}
++				goto reset_needed;
++			}
++			break;
++	}
++	k = str[1] & 0xf;
++
++	DBG_PRINT("Parsing answer string: t0=0x%x k=%d\n", str[1], k);
++	
++	for (tx = str[1]; idx < len; i++) {
++		is_ta = ((tx & 0x10) != 0);	
++		is_tb = ((tx & 0x20) != 0);
++		is_tc = ((tx & 0x40) != 0);
++		is_td = ((tx & 0x80) != 0);
++		DBG_PRINT("*** Iteration %d (idx = %d)\n", i, idx);
++#ifdef SCARD_DEBUG
++               {
++                       int j;
++                       DBG_PRINT("Parsing: ");
++                       for (j = idx; j < len; j++)
++                               DBG_PRINT("0x%x ", str[j]);
++                       DBG_PRINT("\n");
++               }
++#endif
++
++		if (i == 1) {
++			unsigned char fi = 0xff, di = 0xff, ii = 0xff, pi1 = 0xff, n = 0xff;
++			if (is_ta != 0) {
++				ta = str[idx++];
++				fi = (ta & 0xf0) >> 4;
++				di = (ta & 0xf);
++				/* Resetting ETU value */
++				DBG_PRINT("Reset ETU to %d\n", (fi_tab[fi] / di_tab[di]) - 1);
++				gbus_write_uint32(pGBus, SCARD_EGT_ETU_REG, 
++						(gbus_read_uint32(pGBus, SCARD_EGT_ETU_REG) & 0xffff0000) | (((fi_tab[fi] / di_tab[di]) - 1) << 0));
++				DBG_PRINT("ta=0x%x (fi=0x%x di=0x%x) ", ta, fi, di);
++			}
++			if (is_tb != 0) { 
++				tb = str[idx++];
++				ii = (tb & 0x60) >> 5;
++				pi1 = (tb & 0x1f);
++				DBG_PRINT("tb=0x%x (ii=0x%x pi1=0x%x) ", tb, ii, pi1);
++			}
++			if (is_tc != 0) {
++				tc = str[idx++];
++				n = tc;
++				DBG_PRINT("tc=0x%x (n=0x%x) ", tc, n);
++			}
++			if (is_td != 0) {
++				td = str[idx++];
++				t_array[td & 0xf]++;
++				tx = td;
++				DBG_PRINT("td=0x%x", td);
++			} else {
++				t_array[0]++;
++			}
++			DBG_PRINT("\n");
++			if (is_tc != 0) {
++				if (n == 0xff) {
++					if (t_array[0] != 0) {
++						n = 3 - 1;
++						DBG_PRINT("Reset EGT to %d\n", n);
++						gbus_write_uint32(pGBus, SCARD_EGT_ETU_REG, (gbus_read_uint32(pGBus, SCARD_EGT_ETU_REG) & 0xffff) | (n << 16));
++					} else if (t_array[1] != 0) {
++						n = 2 - 1;
++						DBG_PRINT("Reset EGT to %d\n", n);
++						gbus_write_uint32(pGBus, SCARD_EGT_ETU_REG, (gbus_read_uint32(pGBus, SCARD_EGT_ETU_REG) & 0xffff) | (n << 16));
++					}
++				} else {
++					if (t_array[15] == 0) {
++						n = 2 + n - 1;
++						DBG_PRINT("Reset EGT to %d\n", n);
++						gbus_write_uint32(pGBus, SCARD_EGT_ETU_REG, (gbus_read_uint32(pGBus, SCARD_EGT_ETU_REG) & 0xffff) | (n << 16));
++					} else {
++						n = 2 + n - 1;
++						DBG_PRINT("Reset EGT to %d\n", n);
++						gbus_write_uint32(pGBus, SCARD_EGT_ETU_REG, (gbus_read_uint32(pGBus, SCARD_EGT_ETU_REG) & 0xffff) | (n << 16));
++					}
++				}
++			}
++		} else if (i == 2) {
++			unsigned char pi2 = 0xff;
++			if (is_ta != 0) {
++				ta = str[idx++];
++				DBG_PRINT("ta=0x%x ", ta);
++			}
++			if (is_tb != 0) { 
++				tb = str[idx++];
++				pi2 = tb;
++				DBG_PRINT("tb=0x%x (pi2=0x%x) ", tb, pi2);
++			}
++			if (is_tc != 0) {
++				tc = str[idx++];
++				DBG_PRINT("tc=0x%x ", tc);
++			}
++			if (is_td != 0) {
++				td = str[idx++];
++				t_array[td & 0xf]++;
++				tx = td;
++				DBG_PRINT("td=0x%x", td);
++			}
++			DBG_PRINT("\n");
++			if ((is_ta != 0) && ((ta & 0x80) != 0) && ((ta & 0x0f) == 1) && (t_array[1] != 0)) {
++				DBG_PRINT("Disabling txerr_check, rxerr_assert.\n");
++				gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++						gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) & ~((1 << 6) | (1 << 16)));
++			}
++		} else {
++			unsigned char xi = 0xff, ui = 0xff;
++			if (is_ta != 0) {
++				ta = str[idx++];
++				if (t_array[15] != 0) {
++					xi = (ta & 0xc0) >> 6;
++					ui = (ta & 0x3f);
++					/* xi = 0 <-- no clock stop */
++					/* xi = 1 <-- clock stop on low */
++					/* xi = 2 <-- clock stop on high */
++					/* xi = 3 <-- NA */
++					if (xi == 1) { 
++						gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++								gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) & ~(1 << 28));
++						priv->clockstop = 1;
++					} else if (xi == 2) {
++						gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++								gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) | (1 << 28));
++						priv->clockstop = 1;
++					} else
++						priv->clockstop = 0;
++					DBG_PRINT("ta=0x%x (xi=0x%x ui=0x%x) ", ta, xi, ui);
++				} else {
++					DBG_PRINT("ta=0x%x ", ta);
++				}
++			}
++			if (is_tb != 0) { 
++				tb = str[idx++];
++				DBG_PRINT("tb=0x%x ", tb);
++			}
++			if (is_tc != 0) {
++				tc = str[idx++];
++				DBG_PRINT("tc=0x%x ", tc);
++			}
++			if (is_td != 0) {
++				td = str[idx++];
++				t_array[td & 0xf]++;
++				tx = td;
++				DBG_PRINT("td=0x%x", td);
++			}
++			DBG_PRINT("\n");
++		}
++
++		if (is_td == 0) 
++			break;
++		else {
++			is_ta = is_tb = is_tc = is_td = 0;
++			ta = tb = tc = td = 0xff;
++		}
++	}		
++
++	idx += k;
++
++#ifdef SCARD_DEBUG
++	DBG_PRINT("T = x is set for ");
++	for (i = 0; i < 16; i++) {
++		if (t_array[i] != 0)
++			DBG_PRINT("%d ", i);
++	}
++	DBG_PRINT("\n");
++#endif
++	
++	if (t_array[0] != 0) {
++		for (i = 1; i < 16; i++) {
++			if (t_array[i] != 0)
++				break;
++		}
++		if (i < 16) {
++			is_tck = 1;
++			tck = str[idx++];
++		}
++	} else {
++		is_tck = 1;
++		tck = str[idx++];
++	}
++
++	if (idx != len) {
++		/* Check to see if T=0 protocol is used */
++		if ((t_array[0] != 0) && ((idx + 2) == len)) {
++			if ((str[idx] != 0x90) || (str[idx + 1] != 0x00)) {
++				DBG_PRINT("Length mismatched: %d vs. %d\n", idx, len);
++				goto not_valid;
++			}
++		} else {
++			DBG_PRINT("Length mismatched: %d vs. %d\n", idx, len);
++			goto not_valid;
++		}
++	} 
++	if (is_tck != 0) {
++		for (k = 0, i = 1; i < len; i++)
++			k ^= str[i];
++		if (k != 0) {
++			DBG_PRINT("TCK sum mismatched: 0x%x\n", k);
++			goto not_valid;
++		}
++	} else {
++		DBG_PRINT("No TCK needed.\n");
++	}
++
++	return(0);
++
++reset_needed:
++	return(1);
++
++not_valid:
++	return(-1);
++}
++
++/* Activate scard */
++static int activate_scard(struct scard_private *priv)
++{
++	unsigned long old_jiffies, flags;
++	int ret = -1;
++
++	MSG_PRINT("%s: scard activation starts ..\n", scard_devname);
++
++	spin_lock_irqsave(&priv->lock, flags);
++
++	if (priv->volt3 != 0) {
++		DBG_PRINT("%s: Try 3V ..\n", scard_devname);
++		scard_ctrlpin_write(scard_5v_pin, 0); /* Use 3V */
++		scard_ctrlpin_write(scard_cmd_pin, 0); /* Drive CMDVCC low */
++		udelay(RST_WAIT);
++
++		/* Drive RSTIN low */
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x20);
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x620);
++		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x6620);
++		udelay(RST_WIDTH);
++		gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0x3f); /* Re-enable interrupt */
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x20);
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x620);
++		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x6620);
++		gbus_write_uint32(pGBus, SCARD_STATE_REG, (unsigned long)PWR_IDLE);
++
++		spin_unlock_irqrestore(&priv->lock, flags);
++
++		for (old_jiffies = jiffies; time_after(old_jiffies + (HZ / 2), jiffies);) 
++			/* Wait for activity from SCARD (max. 0.5sec)*/ ;
++
++		gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0); /* disable interrupt */
++		spin_lock_irqsave(&priv->lock, flags);
++	
++		if (atomic_read(&answer2reset) != 0) { 
++#ifdef SCARD_DEBUG
++			int i = 0;
++			DBG_PRINT("Got response from 3V setting ..\nAnswering: ");
++			for (i = 0; i < ans_idx; i++)
++				DBG_PRINT("0x%02x ", ans_string[i]);
++			DBG_PRINT("\n"); 
++#endif
++			if ((ret = parse_ans2reset(priv, 1, ans_string, ans_idx)) < 0) {
++				DBG_PRINT("Ans2reset: string error\n");
++				scard_reset(priv, 1); /* cold reset */
++			} else if (ret > 0) {
++				/* Perform warm reset */
++				DBG_PRINT("Ans2reset: warm reset needed.\n");
++				gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x40);
++				gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++							gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) | (1 << 2));
++				scard_reset(priv, 0); /* warm reset */
++				goto out;
++			} else {
++				/* The card is activated so we can turn on interrupts */
++				gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0x3f); /* Re-enable interrupt */
++			}
++		}
++	}
++
++	if ((priv->volt3 == 0) || (atomic_read(&answer2reset) == 0)) {	/* 3V doesn't get response */
++		scard_ctrlpin_write(scard_cmd_pin, 1); /* Drive CMDVCC high to deactive */
++		udelay(1000);
++
++		DBG_PRINT("%s: Try 5V ..\n", scard_devname);
++		scard_ctrlpin_write(scard_5v_pin, 1); /* Use 5V */
++		scard_ctrlpin_write(scard_cmd_pin, 0); /* Drive CMDVCC low */
++		udelay(RST_WAIT);
++
++		/* Drive RSTIN low */
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x20);
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x620);
++		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x6620);
++		udelay(RST_WIDTH);
++		gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0x3f); /* Re-enable interrupt */
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x20);
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x620);
++		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x6620);
++		gbus_write_uint32(pGBus, SCARD_STATE_REG, (unsigned long)PWR_IDLE);
++
++		spin_unlock_irqrestore(&priv->lock, flags);
++
++		for (old_jiffies = jiffies; time_after(old_jiffies + (HZ / 2), jiffies);) 
++			/* Wait for activity from SCARD (max. 0.5sec)*/ ;
++
++		gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0); /* disable interrupt */
++		spin_lock_irqsave(&priv->lock, flags);
++	
++		if (atomic_read(&answer2reset) != 0) { 
++#ifdef SCARD_DEBUG
++			int i;
++			DBG_PRINT("Got response from 5V setting ..\nAnswering: ");
++			for (i = 0; i < ans_idx; i++)
++				DBG_PRINT("0x%02x ", ans_string[i]);
++			DBG_PRINT("\n"); 
++#endif
++			if ((ret = parse_ans2reset(priv, 0, ans_string, ans_idx)) < 0) {
++				DBG_PRINT("Ans2reset: string error\n");
++				scard_reset(priv, 1); /* cold reset */
++			} else if (ret > 0) {
++				/* Perform warm reset */
++				DBG_PRINT("Ans2reset: warm reset needed.\n");
++				gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x40);
++				gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++							gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) | (1 << 2));
++				scard_reset(priv, 0); /* warm reset */
++				goto out;
++			} else {
++				/* The card is activated so we can turn on interrupts */
++				gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0x3f); /* Re-enable interrupt */
++			}
++		}
++	}
++
++out:
++	if (atomic_read(&answer2reset) != 0) {
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x600);
++//		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x600);
++		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x6600);
++		gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x6600);
++		MSG_PRINT("%s: got response from the scard --> switch to normal\n", scard_devname);
++		atomic_set(&(priv->normal_mode), 1);
++		ret = 1;
++	} else if (ret < 0) {
++		MSG_PRINT("%s: no response from the scard --> reject\n", scard_devname);
++		scard_reset(priv, 1); /* cold reset */
++		ret = 0;
++	}
++
++	spin_unlock_irqrestore(&priv->lock, flags);
++
++	return(ret);
++}
++
++/* Reading from driver's buffer, note that it can return read size
++   less than specified */
++static int scard_read(struct file *fptr, char *buffer, size_t count, loff_t *fp)
++{
++	struct scard_private *priv = (struct scard_private *)fptr->private_data;
++	unsigned long flags;
++	unsigned char buf[rd_buffer_size], *bufptr = &buf[0];
++	int cnt;
++	
++	if (atomic_read(&(priv->card_existed)) == 0)
++		return(-EIO);
++	else if (atomic_read(&(priv->normal_mode)) == 0)
++		return(-EIO);
++	
++	/* If block mode is on, check the emptiness of buffer */
++	if (priv->b_mode != 0) {
++		/* Sleep when buffer is empty */
++		wait_event_interruptible(scard_rd_wq, priv->rd_c_idx != priv->rd_p_idx);
++
++		if (atomic_read(&(priv->card_existed)) == 0) 
++			return(-EIO);
++		else if (atomic_read(&(priv->normal_mode)) == 0) 
++			return(-EIO);
++	}
++
++	spin_lock_irqsave(&priv->lock, flags);
++
++	/* Get the data out and adjust consumer index */
++	for (cnt = 0; (priv->rd_c_idx != priv->rd_p_idx) && (cnt < count); cnt++) {
++		*bufptr = priv->rd_buffer[priv->rd_c_idx];
++		priv->rd_c_idx = (priv->rd_c_idx + 1) % rd_buffer_size;
++		bufptr++;
++	}
++
++	spin_unlock_irqrestore(&priv->lock, flags);
++
++	/* Get the data to user */
++	if (cnt && copy_to_user(buffer, (char *)&buf[0], cnt)) 
++		return(-EFAULT);
++
++	return(cnt);
++}
++
++/* Writing to smart card device */
++static int scard_write(struct file *fptr, const char *bufptr, size_t size, loff_t *fp)
++{
++	struct scard_private *priv = (struct scard_private *)fptr->private_data;
++	unsigned long flags, cj;
++	unsigned char buffer[wr_buffer_size];
++	unsigned wr_pidx, wr_cidx;
++	int count = 0;
++	
++	if (atomic_read(&(priv->card_existed)) == 0) {
++		printk("Card not there\n");
++		return(-EIO);
++	} else if (atomic_read(&(priv->normal_mode)) == 0) {
++		printk("Card not ready\n");
++		return(-EIO);
++	}
++	
++	if (size > wr_buffer_size) {
++		ERR_PRINT("%s: exceed max. write size (%d)\n", 
++			scard_devname, wr_buffer_size);
++		return(-EIO);
++	} else if (copy_from_user(&buffer[0], bufptr, size))
++		return(-EFAULT);
++
++	spin_lock_irqsave(&priv->lock, flags);
++
++	cj = jiffies;
++	while ((priv->last_rd_jiffies != 0) && time_after_eq(priv->last_rd_jiffies + TIMEOUT, cj)) {
++		spin_unlock_irqrestore(&priv->lock, flags);
++		set_current_state(TASK_INTERRUPTIBLE);
++		schedule_timeout((priv->last_rd_jiffies + TIMEOUT) - cj);
++		spin_lock_irqsave(&priv->lock, flags);
++		cj = jiffies;
++	}
++
++	wr_pidx = priv->wr_p_idx;	/* Save the old index before proceeding */
++	wr_cidx = priv->wr_c_idx;
++
++	for (count = 0; count < size; count++) {
++		DBG_PRINT("%s: write data 0x%x\n", scard_devname, buffer[count]);
++		/* Save it to buffer */
++		if (((priv->wr_p_idx + 1) % wr_buffer_size) == wr_cidx) {
++			ERR_PRINT("%s: write buffer full\n", scard_devname);
++			goto out;
++		}
++
++		priv->wr_buffer[priv->wr_p_idx] = buffer[count];
++		priv->wr_p_idx = (priv->wr_p_idx + 1) % wr_buffer_size;
++
++	}
++
++out:
++	spin_unlock_irqrestore(&priv->lock, flags);
++
++	/* Buffer was empty, trigger the writer */
++	if (wr_cidx == wr_pidx) 
++		scard_write_device(priv);
++
++	return(count);
++}
++
++/* ioctl function */
++static int scard_ioctl(struct inode *inode, struct file *fptr, unsigned int cmd, unsigned long arg)
++{
++//	unsigned long *ptr = (unsigned long *)arg;
++	struct scard_private *priv = (struct scard_private *)fptr->private_data;
++	
++	if (atomic_read(&(priv->card_existed)) == 0)
++		return(-EIO);
++	else if (atomic_read(&(priv->normal_mode)) == 0)
++		return(-EIO);
++	
++//	if (ptr == NULL)
++//		return(-EIO);
++
++	switch(cmd) {
++		case SCARD_IOC_WARMRESET:
++			gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) & ~0x40);
++			gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++						gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) | (1 << 2));
++			udelay(1);
++			scard_reset(priv, 0); /* warm reset */
++			break;
++		case SCARD_IOC_CLOCKSTOP:
++			if (priv->clockstop == 0) 
++				return(-EIO);	
++			gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++						gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) | (1 << 3));
++			udelay(1);
++			atomic_set(&(priv->state), (int)CLOCK_STOP);
++			break;
++		case SCARD_IOC_CLOCKSTART:
++			if (priv->clockstop == 0) 
++				return(-EIO);	
++			gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++					gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) & ~(1 << 3));
++			udelay(1);
++			atomic_set(&(priv->state), (int)PWR_IDLE);
++			break;
++		default:
++                        return(-EIO);
++	}
++	return(0);
++}
++
++/* Poll function */
++static unsigned int scard_poll(struct file *fptr, struct poll_table_struct *ptable)
++{
++	struct scard_private *priv = (struct scard_private *)fptr->private_data;
++	unsigned int mask = 0;
++	unsigned long flags;
++
++	if (atomic_read(&(priv->card_existed)) == 0)
++		return(POLLERR);
++	else if (atomic_read(&(priv->normal_mode)) == 0)
++		return(POLLERR);
++
++	spin_lock_irqsave(&priv->lock, flags);
++	poll_wait(fptr, &scard_rd_wq, ptable);
++	if (priv->rd_c_idx != priv->rd_p_idx)
++		mask |= (POLLIN | POLLRDNORM);
++	spin_unlock_irqrestore(&priv->lock, flags);
++
++	return(mask);
++}
++
++/* Open the device */
++static int scard_open(struct inode *inode_ptr, struct file *fptr)
++{
++	if (atomic_read(&(scard_priv.card_existed)) == 0)
++		return(-EIO);
++	else if (atomic_read(&(scard_priv.normal_mode)) == 0)
++		return(-EIO);
++	
++	/* This device is exclusive, that is, only one process can use it */
++	if (scard_priv.ref_cnt != 0) {
++		ERR_PRINT("%s: exclusive access only\n", scard_devname);
++		return(-EIO);
++	} 
++
++	MOD_INC_USE_COUNT;
++
++	/* Set the block mode and increase reference count */
++	scard_priv.ref_cnt++;
++	scard_priv.b_mode = ((fptr->f_flags & O_NONBLOCK) ? 0 : 1);
++	scard_priv.last_rd_jiffies = jiffies;
++	scard_priv.last_wr_jiffies = jiffies;
++
++	/* Flush the buffer */
++	scard_priv.rd_p_idx = scard_priv.rd_c_idx = 0;
++	scard_priv.wr_p_idx = scard_priv.wr_c_idx = 0;
++
++	fptr->f_op = &scard_fops;
++	fptr->private_data = (void *)&scard_priv;
++
++	atomic_set(&scard_priv.state, (int)PWR_IDLE);
++
++	return(0);
++}
++
++/* Close the device */
++static int scard_release(struct inode *inode_ptr, struct file *fptr) 
++{
++	struct scard_private *priv = (struct scard_private *)fptr->private_data;
++	unsigned long flags;
++
++	if (atomic_read(&(scard_priv.card_existed)) == 0)
++		goto error_out;
++	else if (atomic_read(&(scard_priv.normal_mode)) == 0)
++		goto error_out;
++
++	MOD_DEC_USE_COUNT;
++
++	spin_lock_irqsave(&priv->lock, flags);
++
++	/* Reset the RX/TX FIFOs */
++	gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++				gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) | ((1 << 24) | (1 << 25)));
++	gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++				gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) & ~((1 << 24) | (1 << 25)));
++
++	/* Adjust reference count */
++	priv->ref_cnt--;
++	priv->rd_p_idx = priv->rd_c_idx = 0;
++	priv->wr_p_idx = priv->wr_c_idx = 0;
++
++	spin_unlock_irqrestore(&priv->lock, flags);
++
++	return(0);
++
++error_out:
++	MOD_DEC_USE_COUNT;
++	/* Adjust reference count */
++	priv->ref_cnt--;
++	return(-EIO);
++}
++
++/* Reset scard to initial state */
++static void scard_reset(struct scard_private *priv, int cold)
++{
++	extern unsigned long tango2_get_sysclock(void);
++	unsigned long mask;
++	unsigned int nclk;
++
++	gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0); /* disable interrupt */
++
++	if (cold != 0) { /* Cold reset */
++		priv->volt3 = use_3v;
++		priv->rev_msb = reverse_msb;
++		priv->rev_pol = reverse_pol;
++	}
++	ans_idx = 0;
++	priv->clockstop = 0;
++	priv->rd_p_idx = priv->rd_c_idx = 0;
++	priv->wr_p_idx = priv->wr_c_idx = 0;
++
++	/* Set CMDVCC high and Set RSTIN high */
++	scard_ctrlpin_write(scard_cmd_pin, 1); 
++
++	if (priv->volt3 != 0)
++		scard_ctrlpin_write(scard_5v_pin, 0); 
++	else
++		scard_ctrlpin_write(scard_5v_pin, 1); 
++
++	gbus_write_uint32(pGBus, SCARD_SOFT_OUT_REG, gbus_read_uint32(pGBus, SCARD_SOFT_OUT_REG) | 0x60);
++
++	/* Initialize everything to be in known state */
++	nclk = tango2_get_sysclock() / (frequency * 2);
++	gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) & 0xffffffe0);
++	gbus_write_uint32(pGBus, SCARD_CLK_HIGH_VAL, nclk); 
++	gbus_write_uint32(pGBus, SCARD_CLK_LOW_VAL, nclk); 
++
++	/* Th = (3 * 256) = 768, Tg = 2048, Tb = 512, Tc = 39936 */
++	gbus_write_uint32(pGBus, SCARD_PARAM_REG, (3 << 20) | (8 << 16) | (2 << 12) | (0x9c << 0));
++	/* EGT = 4, ETU = 372 */
++	gbus_write_uint32(pGBus, SCARD_EGT_ETU_REG, ((4 - 1) << 16) | ((372 - 1) << 0));
++
++	/* set up initial value (includes resetting FIFO */
++	mask = (1 << 5) | (1 << 6) | (1 << 8) | (3 << 9) | (3 << 13) | (1 << 16) | 
++		(2 << 17) | (1 << 20) | (1 << 24) | (1 << 25) | (1 << 27) | (1 << 7) | (1 << 12);
++	if (priv->rev_msb != 0)
++		mask ^= (1 << 7);
++	if (priv->rev_pol != 0)
++		mask ^= (1 << 12);
++	gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, mask);
++
++	udelay(1);
++
++	/* Un-reset FIFO */
++	gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++				gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) & ~((1 << 24) | (1 << 25)));
++	gbus_write_uint32(pGBus, SCARD_STATE_REG, 0);
++
++	atomic_set(&(priv->card_existed), 0);
++	atomic_set(&(priv->state), (int)UNKNOWN);
++	atomic_set(&(priv->normal_mode), 0);
++	atomic_set(&answer2reset, 0);
++
++//	gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0x3f); /* Re-enable interrupt */
++}
++
++/* Monitor the status of smart card */
++#ifdef USE_KERNEL_TIMER
++static void scard_monitor(unsigned long priv_data)
++#else
++static int scard_monitor(void *priv_data)
++#endif
++{
++	struct scard_private *priv = (struct scard_private *)priv_data;
++	enum SCARD_STATE cur_state, set_state;
++	int p_card_state;
++	int c_card_state;
++	int delay;
++
++#ifndef USE_KERNEL_TIMER
++	strcpy(current->comm, "scard");
++	daemonize();
++	reparent_to_init();
++
++        while (priv->stop_thread == 0) {
++#endif
++
++		p_card_state = atomic_read(&(priv->card_existed));
++		c_card_state = is_card_present(priv);
++//		delay = HZ / 5; /* Default 0.2 sec */
++		delay = HZ; /* Default 1 sec */
++
++//		spin_lock(&priv->lock);
++
++		if (p_card_state != c_card_state) {
++			DBG_PRINT("%s: card state change %d->%d\n", scard_devname,
++					p_card_state, c_card_state);
++			/* Update the state */
++			atomic_set(&(priv->card_existed), c_card_state);
++
++			/* Detected transition of card present status */
++			if (c_card_state != 0) { /* Card is here now */
++				MSG_PRINT("%s: scard present detected.\n", scard_devname);
++				atomic_set(&(priv->card_existed), 1);
++				atomic_set(&(priv->state), (int)PWR_IDLE);
++				atomic_set(&(priv->normal_mode), 0);
++				priv->reset_cnt = 0;
++				gbus_write_uint32(pGBus, SCARD_STATE_REG, 0);
++				gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 
++						gbus_read_uint32(pGBus, SCARD_SCARD_CTRL_REG) & 0xffffffe0);
++			} else { /* Card removed */
++				MSG_PRINT("%s: scard removal detected.\n", scard_devname);
++				scard_reset(priv, 1);
++				priv->rd_p_idx = priv->rd_c_idx = 0;
++				priv->wr_p_idx = priv->wr_c_idx = 0;
++				wake_up_interruptible(&scard_rd_wq);
++				goto out;
++			}
++		} else if (c_card_state == 0)
++			goto out;
++
++		/* We have card here, check the state transition */
++		cur_state = (enum SCARD_STATE)(gbus_read_uint32(pGBus, SCARD_STATE_REG) & 0x7);
++		if (!PERSISTENT_STATE(cur_state)) {
++//			delay = HZ / 10; /* Change to 0.1 sec */
++			delay = HZ / 2; /* Change to 0.5 sec */
++			goto out;
++		} 
++
++		set_state = (enum SCARD_STATE)atomic_read(&(priv->state));
++		if ((set_state == cur_state) || (set_state == UNKNOWN)) {
++//			delay = HZ / 2;	/* State remain stable -- change to 0.5 sec */
++			delay = HZ;	/* State remain stable -- change to 1 sec */
++			goto out;
++		} 
++
++		DBG_PRINT("%s: expect state (%d) != current state(%d)\n", scard_devname,
++				set_state, cur_state);
++		if (set_state == PWR_IDLE) 
++			activate_scard(priv);
++		else 
++			ERR_PRINT("%s: WARNING: inconsistent state %d\n", scard_devname, set_state);
++
++out:
++//		spin_unlock(&priv->lock);
++
++#ifndef USE_KERNEL_TIMER
++                set_current_state(TASK_UNINTERRUPTIBLE);
++                schedule_timeout(delay);
++        }
++#endif
++
++#ifdef USE_KERNEL_TIMER
++	/* Schedule for the next time */
++	mod_timer(&scard_timer, jiffies + delay); 
++#else
++	return(0);
++#endif
++}
++
++int __init scard_init_module(void)
++{
++	int status = 0;
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	extern int tango2_scard_enabled(void);
++	if (tango2_scard_enabled() == 0) {
++		ERR_PRINT("%s: device is disabled.\n", scard_devname);
++		return(0);
++	} 
++#endif
++
++#if defined(CONFIG_TANGO2_XENV)
++	scard_5v_pin = xenv_scard_5v_pin;
++	scard_cmd_pin = xenv_scard_cmd_pin;
++	scard_off_pin = xenv_scard_off_pin;
++#endif
++
++	/* Initialize private data structure */
++	memset(&scard_priv, 0, sizeof(struct scard_private)); 
++	spin_lock_init(&scard_priv.lock);
++
++	if (rd_buffer_size < 8) {
++		ERR_PRINT("%s: read buffer size (%d) error, minimum 8.\n", scard_devname,
++			rd_buffer_size); 
++		return(-EIO);
++	} else if (wr_buffer_size < 8) {
++		ERR_PRINT("%s: write buffer size (%d) error, minimum 8.\n", scard_devname,
++			wr_buffer_size); 
++		return(-EIO);
++	} else if ((scard_priv.rd_buffer = kmalloc(rd_buffer_size, GFP_KERNEL)) == NULL) {
++		ERR_PRINT("%s: out of memory for read buffer\n", scard_devname); 
++		return(-ENOMEM);
++	} else if ((scard_priv.wr_buffer = kmalloc(wr_buffer_size, GFP_KERNEL)) == NULL) {
++		ERR_PRINT("%s: out of memory for write buffer\n", scard_devname); 
++		kfree(scard_priv.rd_buffer);
++		return(-ENOMEM);
++	}
++
++	/* Register device, and may be allocating major# */
++	status = register_chrdev(major_num, scard_devname, &scard_fops);
++	if (status < 0) {
++		ERR_PRINT("%s: cannot get major number\n", scard_devname); 
++		kfree(scard_priv.rd_buffer);
++		kfree(scard_priv.wr_buffer);
++		return(status);
++	} else if (major_num == 0)
++		major_num = status;	/* Dynamic major# allocation */
++
++	/* Hook up ISR */
++	if (request_irq(scard_irq, scard_isr, SA_INTERRUPT, scard_devname, 
++			&scard_priv) != 0) {
++		ERR_PRINT("%s: cannot register IRQ (%d)\n", scard_devname,
++			scard_irq);
++		unregister_chrdev(major_num, scard_devname);	
++		kfree(scard_priv.rd_buffer);
++		kfree(scard_priv.wr_buffer);
++		return(-EIO);
++	}
++
++	/* Do nothing is CONFIG_DEVFS_FS is not enabled */
++	devfs_handle = devfs_register(NULL, scard_devname, DEVFS_FL_AUTO_DEVNUM,
++				major_num, 0, S_IFCHR | S_IRUGO | S_IWUGO, &scard_fops, NULL);
++	if (devfs_handle == NULL)
++		ERR_PRINT("%s: devfs module not registered\n", 
++			scard_devname);
++
++#ifdef CONFIG_EM86XX_SMARTCARD
++	MSG_PRINT("%s: driver loaded (rd_buffer_size = %d, wr_buffer_size = %d)\n", 
++		scard_devname, rd_buffer_size, wr_buffer_size);
++#else
++#ifndef TEMP_WORKAROUND
++	MSG_PRINT("%s: SMP8634 driver loaded (rd_buffer_size = %d, wr_buffer_size = %d, freq = %d)\n", 
++		scard_devname, rd_buffer_size, wr_buffer_size, frequency);
++#else
++	MSG_PRINT("%s: SMP8634 driver loaded (rd_buffer_size = %d, wr_buffer_size = %d, freq = %d), workaround enabled.\n", 
++		scard_devname, rd_buffer_size, wr_buffer_size, frequency);
++#endif
++#endif
++
++#ifndef TEMP_WORKAROUND
++	/* Set SCARD_CTL[0..2] to 2 outputs for 5V, CMD, and 1 input for OFF */
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_uart0_gpio_dir,
++			((1 << scard_cmd_pin) | (1 << scard_5v_pin)) << 16);
++#else
++	em86xx_gpio_setdirection(scard_off_pin, 0);
++	em86xx_gpio_setdirection(scard_cmd_pin, 1);
++	em86xx_gpio_setdirection(scard_5v_pin, 1);
++#endif
++
++	scard_reset(&scard_priv, 1);
++
++	DBG_PRINT("%s: enabled smartcard interface.\n", scard_devname);
++//	gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0x3f); /* Enable interrupts */
++
++#ifdef USE_KERNEL_TIMER
++	/* Start the timer */
++	init_timer(&scard_timer);
++	scard_timer.function = scard_monitor;
++	scard_timer.data = (unsigned long)&scard_priv;
++        mod_timer(&scard_timer, jiffies + HZ/10);
++#else
++	scard_priv.stop_thread = 0;
++	if (kernel_thread(scard_monitor, (void *)&scard_priv, CLONE_FS|CLONE_FILES) < 0)
++		return(-ENODEV);
++#endif
++
++	return(0);
++}
++
++void __exit scard_cleanup_module(void)
++{
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	extern int tango2_scard_enabled(void);
++	if (tango2_scard_enabled() == 0) 
++		return;
++#endif
++	/* Do nothing is CONFIG_DEVFS_FS is not enabled */
++	if (devfs_handle != NULL)
++		devfs_unregister(devfs_handle);
++
++	gbus_write_uint32(pGBus, SCARD_INTEN_REG, 0);
++
++#ifdef USE_KERNEL_TIMER
++	/* Kill timer */
++	del_timer_sync(&scard_timer);
++#else
++	scard_priv.stop_thread = 1;
++	set_current_state(TASK_INTERRUPTIBLE);
++	schedule_timeout(3*HZ);
++#endif
++
++	gbus_write_uint32(pGBus, SCARD_SCARD_CTRL_REG, 0);
++	gbus_write_uint32(pGBus, SCARD_STATE_REG, 0);
++	scard_ctrlpin_write(scard_5v_pin, 0); 
++	scard_ctrlpin_write(scard_cmd_pin, 1); 
++
++	unregister_chrdev(major_num, scard_devname);
++	free_irq(scard_irq, &scard_priv);
++
++	if (scard_priv.rd_buffer != NULL)
++		kfree(scard_priv.rd_buffer);
++	if (scard_priv.wr_buffer != NULL)
++		kfree(scard_priv.wr_buffer);
++
++	MSG_PRINT("%s: driver unloaded\n", scard_devname);
++}
++
++module_init(scard_init_module);
++module_exit(scard_cleanup_module);
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/tango2/scard.h linuxmips-2.4.30/include/asm-mips/tango2/scard.h
+--- linuxmips-2.4.30.ref/include/asm-mips/tango2/scard.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/tango2/scard.h	2007-05-11 15:59:58.000000000 -0700
+@@ -0,0 +1,28 @@
++/*****************************************
++ *  Copyright © 2001-2007
++ *  Sigma Designs, Inc. All Rights Reserved
++ *  Proprietary and Confidential
++ ******************************************/
++                                                                                
++/*
++ * Smart card related definitions, and function prototypes.
++ */
++#ifndef _SCARD_H_
++#define _SCARD_H_
++                                                                                
++#ifdef __KERNEL__
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <asm/ioctl.h>
++#else
++#include <sys/ioctl.h>
++#endif /* __KERNEL__ */
++
++/* ioctl commands for user level applications*/
++#define SCARD_IOC_MAGIC		'S'
++#define SCARD_IOC_WARMRESET	_IO(SCARD_IOC_MAGIC, 0)
++#define SCARD_IOC_CLOCKSTOP	_IO(SCARD_IOC_MAGIC, 1)
++#define SCARD_IOC_CLOCKSTART	_IO(SCARD_IOC_MAGIC, 2)
++                                                                                
++#endif /* _SCARD_H_ */
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1023.scard.patch linuxmips-2.4.30/README.1023.scard.patch
+--- linuxmips-2.4.30.ref/README.1023.scard.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1023.scard.patch	2007-05-11 16:00:43.000000000 -0700
+@@ -0,0 +1,20 @@
++Feature:
++--------
++Smartcard sample driver for SMP863x (ES4 or above).
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++1005
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++ES4 or above
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

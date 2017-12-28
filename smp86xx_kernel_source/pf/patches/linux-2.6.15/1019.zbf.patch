@@ -1,0 +1,118 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/arch/mips/boot/Makefile linux-2.6.15/arch/mips/boot/Makefile
+--- linux-2.6.15.ref/arch/mips/boot/Makefile	2006-01-25 20:51:09.000000000 -0800
++++ linux-2.6.15/arch/mips/boot/Makefile	2007-07-05 15:30:52.000000000 -0700
+@@ -42,6 +42,45 @@
+ $(obj)/addinitrd: $(obj)/addinitrd.c
+ 	$(HOSTCC) -o $@ $^
+ 
++$(obj)/vmlinux.gz: $(obj)/vmlinux.bin
++	gzip -c9 $< > $@
++
++ifeq ($(CONFIG_TANGOX),y)
++$(obj)/vmlinux.zbf: $(obj)/vmlinux.gz 
++	genzbf -l $(loadaddr) -s $(loadaddr) -a lzf -o $@ $<
++
++$(obj)/xrpc_xload_vmlinux_$(certtype).bin: $(obj)/vmlinux.zbf
++	sh $(TOPDIR)/scripts/build_cpu_xload.bash $(obj)/vmlinux $(certid) $(certtype)
++
++zbimage-linux-xrpc: $(obj)/zbimage-linux-xrpc
++
++$(obj)/zbimage-linux-xrpc: $(obj)/xrpc_xload_vmlinux_$(certtype).bin
++	mkdir romfs
++	cp -f $< romfs
++	genromfs -V MIPS_LINUX_XRPC -d romfs -f $@
++	rm -rf romfs
++
++$(obj)/vmlinux_sha1.zbf: $(obj)/vmlinux.gz
++	@tobin.bash `sha1sum -b $< | awk '{ print $$1 }'` > $@
++
++$(obj)/xrpc_xload_vmlinux_sha1_$(certtype).bin: $(obj)/vmlinux_sha1.zbf
++	sh $(TOPDIR)/scripts/build_cpu_xload.bash $(obj)/vmlinux_sha1 $(certid) $(certtype)
++
++$(obj)/vmlinux_enc.bin: $(obj)/xrpc_xload_vmlinux_sha1_$(certtype).bin $(obj)/vmlinux.gz
++	@cat $^ > $@
++
++$(obj)/vmlinux_enc.zbf: $(obj)/vmlinux_enc.bin 
++	genzbf -l $(loadaddr) -s $(loadaddr) -e `stat --format=%s $(obj)/xrpc_xload_vmlinux_sha1_$(certtype).bin` -a lzef -o $@ $<
++
++zbimage-linux-enc: $(obj)/zbimage-linux-enc
++
++$(obj)/zbimage-linux-enc: $(obj)/vmlinux_enc.zbf
++	mkdir romfs
++	cp -f $< romfs
++	genromfs -V MIPS_LINUX_ENC -d romfs -f $@
++	rm -rf romfs
++endif
++
+ archhelp:
+ 	@echo	'* vmlinux.ecoff	- ECOFF boot image'
+ 	@echo	'* vmlinux.srec		- SREC boot image'
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/README.1019.zbf.patch linux-2.6.15/README.1019.zbf.patch
+--- linux-2.6.15.ref/README.1019.zbf.patch	1969-12-31 16:00:00.000000000 -0800
++++ linux-2.6.15/README.1019.zbf.patch	2007-07-05 15:31:30.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++ZBF container packaging and binary signing.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP86xx xx=?
++------------------------------------------
++Tango2 ES6/RevA or above, or Tango3 ES1 or above
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/scripts/build_cpu_xload.bash linux-2.6.15/scripts/build_cpu_xload.bash
+--- linux-2.6.15.ref/scripts/build_cpu_xload.bash	1969-12-31 16:00:00.000000000 -0800
++++ linux-2.6.15/scripts/build_cpu_xload.bash	2007-07-05 15:30:01.000000000 -0700
+@@ -0,0 +1,42 @@
++#!/bin/bash
++set -e
++#
++if [ $# != 3 ]; then 
++    cat <<EOF
++
++Syntax: $0 cpupkg 000b ES4_dev
++
++The cpupkg came with .zbf extension. You have to specify cpu binary xtask to wrap, 
++the certificate id you plan to use, and the chip revision (ES1_dev or ES4_dev) .
++also make sure that the scripts below are accessible and in your PATH variable
++EOF
++    exit -1 
++fi
++#
++if [ -z "$XSDK_ROOT" ]; then echo "*** You need to define the XSDK_ROOT variable ***"; exit -1; fi
++#
++CPUPKG=$1
++CERTID=$2
++REV=$3
++BNAME=`basename $1`
++DNAME=`dirname $1`
++TMPADDR=0x13000000
++
++CPUPKG_BIN=${DNAME}/${BNAME}.zbf
++CPUPKG_SIG=${DNAME}/${BNAME}.8634_${REV}_${CERTID}.bin
++XLOAD_BIN=${DNAME}/${BNAME}_${REV}.xload
++XRPC_BIN=xrpc_xload_${BNAME}_${REV}.bin
++PRIVATE_KEY=$XSDK_ROOT/dummy_private_keys/8634_${REV}_${CERTID}_keyboth.pem
++
++echo Using $CERT_BIN
++
++# aes128 pad!
++zeropad.bash $CPUPKG_BIN 16
++SIZE=`stat --format=%s $CPUPKG_BIN`
++
++echo CPUPKG Image Map : size=$SIZE
++
++openssl sha1 -sign $PRIVATE_KEY < $CPUPKG_BIN | revbytes.pl > $CPUPKG_SIG
++mkxload.bash $XSDK_ROOT $REV $CERTID $CPUPKG_BIN $CPUPKG_SIG $XLOAD_BIN
++buildxrpc.bash XRPC_CALLERID_IGNORED XRPC_ID_XLOAD $SIZE $TMPADDR 2 3 4 $XLOAD_BIN ${DNAME}/$XRPC_BIN
++

@@ -1,0 +1,92 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/process.c linuxmips-2.4.30/arch/mips/kernel/process.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/process.c	2003-07-23 21:44:00.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/kernel/process.c	2005-05-04 11:10:19.000000000 -0700
+@@ -128,6 +128,29 @@
+ 	return 1;
+ }
+ 
++/* bk - backported from 2.6.  coredump was not abi compliant. */
++void dump_regs(elf_greg_t *gp, struct pt_regs *regs)
++{
++	int i;
++
++	for (i = 0; i < EF_REG0; i++)
++		gp[i] = 0;
++	gp[EF_REG0] = 0;
++	for (i = 1; i <= 31; i++)
++		gp[EF_REG0 + i] = regs->regs[i];
++	gp[EF_REG26] = 0;
++	gp[EF_REG27] = 0;
++	gp[EF_LO] = regs->lo;
++	gp[EF_HI] = regs->hi;
++	gp[EF_CP0_EPC] = regs->cp0_epc;
++	gp[EF_CP0_BADVADDR] = regs->cp0_badvaddr;
++	gp[EF_CP0_STATUS] = regs->cp0_status;
++	gp[EF_CP0_CAUSE] = regs->cp0_cause;
++#ifdef EF_UNUSED0
++	gp[EF_UNUSED0] = 0;
++#endif
++}
++
+ /*
+  * Create a kernel thread
+  */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/elf.h linuxmips-2.4.30/include/asm-mips/elf.h
+--- linuxmips-2.4.30.ref/include/asm-mips/elf.h	2003-11-16 17:07:45.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/elf.h	2005-05-04 11:10:19.000000000 -0700
+@@ -66,9 +66,17 @@
+ #define USE_ELF_CORE_DUMP
+ #define ELF_EXEC_PAGESIZE	PAGE_SIZE
+ 
+-#define ELF_CORE_COPY_REGS(_dest,_regs)				\
+-	memcpy((char *) &_dest, (char *) _regs,			\
+-	       sizeof(struct pt_regs));
++/* bk - backport changes from 2.6 to make coredump ABI-compilant */
++extern void dump_regs(elf_greg_t *, struct pt_regs *regs);
++extern int dump_task_regs (struct task_struct *, elf_gregset_t *);
++extern int dump_task_fpu(struct task_struct *, elf_fpregset_t *);
++
++#define ELF_CORE_COPY_REGS(elf_regs, regs)			\
++	dump_regs((elf_greg_t *)&(elf_regs), regs);
++#define ELF_CORE_COPY_TASK_REGS(tsk, elf_regs) \
++	dump_task_regs(tsk, elf_regs)
++#define ELF_CORE_COPY_FPREGS(tsk, elf_fpregs)			\
++	dump_task_fpu(tsk, elf_fpregs)
+ 
+ /* This yields a mask that user programs can use to figure out what
+    instruction set this cpu supports.  This could be done in userspace,
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/reg.h linuxmips-2.4.30/include/asm-mips/reg.h
+--- linuxmips-2.4.30.ref/include/asm-mips/reg.h	2001-11-10 18:44:51.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/reg.h	2005-05-04 11:10:19.000000000 -0700
+@@ -45,6 +45,9 @@
+ /*
+  * k0/k1 unsaved
+  */
++#define EF_REG26		32
++#define EF_REG27		33
++
+ #define EF_REG28		34
+ #define EF_REG29		35
+ #define EF_REG30		36
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1019.corefile.patch linuxmips-2.4.30/README.1019.corefile.patch
+--- linuxmips-2.4.30.ref/README.1019.corefile.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1019.corefile.patch	2005-05-04 11:11:08.000000000 -0700
+@@ -0,0 +1,18 @@
++Feature:
++--------
++Correction of core file.
++
++Prerequisite patch numbers:
++---------------------------
++none
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

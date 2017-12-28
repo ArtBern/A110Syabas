@@ -1,0 +1,332 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/arch/mips/Kconfig linux-2.6.15/arch/mips/Kconfig
+--- linux-2.6.15.ref/arch/mips/Kconfig	2007-07-06 10:42:11.000000000 -0700
++++ linux-2.6.15/arch/mips/Kconfig	2007-07-06 12:23:11.000000000 -0700
+@@ -739,6 +739,7 @@
+ 	select DMA_NONCOHERENT
+ 	select HW_HAS_PCI
+  	select SD_IPFILTER
++	select CRYPTO_SHA1
+ 	help
+ 	  Add support for Sigma Designs SMP863x board. Say Y here to
+ 	  support this machine type.
+@@ -758,6 +759,8 @@
+ 	select DMA_NONCOHERENT
+ 	select HW_HAS_PCI
+  	select SD_IPFILTER
++	select CRYPTO_SHA1
++	select CRYPTO_SHA256
+ 	help
+ 	  Add support for Sigma Designs SMP865x board. Say Y here to
+ 	  support this machine type.
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/arch/mips/tangox/Makefile linux-2.6.15/arch/mips/tangox/Makefile
+--- linux-2.6.15.ref/arch/mips/tangox/Makefile	2007-07-06 10:42:11.000000000 -0700
++++ linux-2.6.15/arch/mips/tangox/Makefile	2007-07-06 12:33:18.000000000 -0700
+@@ -14,7 +14,7 @@
+ 
+ obj-$(CONFIG_TANGOX_PROM_CONSOLE) += console.o
+ 
+-obj-$(CONFIG_TANGOX_XENV_READ) += sha1.o xenv.o
++obj-$(CONFIG_TANGOX_XENV_READ) += sha.o xenv.o
+ 
+ obj-y += gpio.o
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/arch/mips/tangox/sha1.c linux-2.6.15/arch/mips/tangox/sha1.c
+--- linux-2.6.15.ref/arch/mips/tangox/sha1.c	2007-07-06 10:42:11.000000000 -0700
++++ linux-2.6.15/arch/mips/tangox/sha1.c	1969-12-31 16:00:00.000000000 -0800
+@@ -1,110 +0,0 @@
+-/*
+- * SHA1 Secure Hash Algorithm.
+- *
+- * dup of  crypto/sha1.c, because we  can't use crypto api  cleanly at
+- * init time...
+- */
+-
+-#include <linux/init.h>
+-#include <linux/module.h>
+-#include <linux/mm.h>
+-#include <linux/crypto.h>
+-#include <linux/cryptohash.h>
+-#include <asm/scatterlist.h>
+-#include <asm/byteorder.h>
+-
+-#define SHA1_DIGEST_SIZE	20
+-#define SHA1_HMAC_BLOCK_SIZE	64
+-
+-struct sha1_ctx {
+-	u64 count;
+-	u32 state[5];
+-	u8 buffer[64];
+-};
+-
+-static void __init sha1_init(void *ctx)
+-{
+-	struct sha1_ctx *sctx = ctx;
+-	static const struct sha1_ctx initstate = {
+-	  0,
+-	  { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 },
+-	  { 0, }
+-	};
+-
+-	*sctx = initstate;
+-}
+-
+-static void __init sha1_update(void *ctx, const u8 *data, unsigned int len)
+-{
+-	struct sha1_ctx *sctx = ctx;
+-	unsigned int i, j;
+-	u32 temp[SHA_WORKSPACE_WORDS];
+-
+-	j = (sctx->count >> 3) & 0x3f;
+-	sctx->count += len << 3;
+-
+-	if ((j + len) > 63) {
+-		memcpy(&sctx->buffer[j], data, (i = 64-j));
+-		sha_transform(sctx->state, sctx->buffer, temp);
+-		for ( ; i + 63 < len; i += 64) {
+-			sha_transform(sctx->state, &data[i], temp);
+-		}
+-		j = 0;
+-	}
+-	else i = 0;
+-	memset(temp, 0, sizeof(temp));
+-	memcpy(&sctx->buffer[j], &data[i], len - i);
+-}
+-
+-/* Add padding and return the message digest. */
+-static void __init sha1_final(void* ctx, u8 *out)
+-{
+-	struct sha1_ctx *sctx = ctx;
+-	u32 i, j, index, padlen;
+-	u64 t;
+-	u8 bits[8] = { 0, };
+-	static const u8 padding[64] = { 0x80, };
+-
+-	t = sctx->count;
+-	bits[7] = 0xff & t; t>>=8;
+-	bits[6] = 0xff & t; t>>=8;
+-	bits[5] = 0xff & t; t>>=8;
+-	bits[4] = 0xff & t; t>>=8;
+-	bits[3] = 0xff & t; t>>=8;
+-	bits[2] = 0xff & t; t>>=8;
+-	bits[1] = 0xff & t; t>>=8;
+-	bits[0] = 0xff & t;
+-
+-	/* Pad out to 56 mod 64 */
+-	index = (sctx->count >> 3) & 0x3f;
+-	padlen = (index < 56) ? (56 - index) : ((64+56) - index);
+-	sha1_update(sctx, padding, padlen);
+-
+-	/* Append length */
+-	sha1_update(sctx, bits, sizeof bits);
+-
+-	/* Store state in digest */
+-	for (i = j = 0; i < 5; i++, j += 4) {
+-		u32 t2 = sctx->state[i];
+-		out[j+3] = t2 & 0xff; t2>>=8;
+-		out[j+2] = t2 & 0xff; t2>>=8;
+-		out[j+1] = t2 & 0xff; t2>>=8;
+-		out[j  ] = t2 & 0xff;
+-	}
+-
+-	/* Wipe context */
+-	memset(sctx, 0, sizeof *sctx);
+-}
+-
+-void __init sha1_full(u8 *digest, const u8 *src, u32 len)
+-{
+-	struct sha1_ctx ctx;
+-	int i;
+-
+-	sha1_init(&ctx);
+-	sha1_update(&ctx, src, len);
+-	sha1_final(&ctx, digest);
+-
+-	for (i = 0; i < SHA1_DIGEST_SIZE / 2; i++)
+-		digest[i] = digest[SHA1_DIGEST_SIZE - i - 1];
+-}
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/arch/mips/tangox/sha.c linux-2.6.15/arch/mips/tangox/sha.c
+--- linux-2.6.15.ref/arch/mips/tangox/sha.c	1969-12-31 16:00:00.000000000 -0800
++++ linux-2.6.15/arch/mips/tangox/sha.c	2007-07-06 12:36:03.000000000 -0700
+@@ -0,0 +1,41 @@
++
++#include <linux/config.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/mm.h>
++#include <linux/crypto.h>
++#include <linux/cryptohash.h>
++#include <asm/scatterlist.h>
++#include <asm/byteorder.h>
++
++#include "sha.h"
++	
++#ifdef CONFIG_CRYPTO_SHA1
++void __init sha1_full(u8 *digest, const u8 *src, u32 len)
++{
++	struct sha1_ctx ctx;
++	int i;
++
++	sha1_init(&ctx);
++	sha1_update(&ctx, src, len);
++	sha1_final(&ctx, digest);
++
++	for (i = 0; i < SHA1_DIGEST_SIZE / 2; i++)
++		digest[i] = digest[SHA1_DIGEST_SIZE - i - 1];
++}
++#endif
++
++#ifdef CONFIG_CRYPTO_SHA256
++void __init sha256_full(u8 *digest, const u8 *src, u32 len)
++{
++	struct sha256_ctx ctx;
++	int i;
++
++	sha256_init(&ctx);
++	sha256_update(&ctx, src, len);
++	sha256_final(&ctx, digest);
++
++	for (i = 0; i < SHA256_DIGEST_SIZE / 2; i++)
++		digest[i] = digest[SHA256_DIGEST_SIZE - i - 1];
++}
++#endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/arch/mips/tangox/sha.h linux-2.6.15/arch/mips/tangox/sha.h
+--- linux-2.6.15.ref/arch/mips/tangox/sha.h	1969-12-31 16:00:00.000000000 -0800
++++ linux-2.6.15/arch/mips/tangox/sha.h	2007-07-06 12:36:30.000000000 -0700
+@@ -0,0 +1,34 @@
++
++#ifndef __SHA_H__
++#define __SHA_H__
++
++#ifdef CONFIG_CRYPTO_SHA1
++#define SHA1_DIGEST_SIZE        20
++
++struct sha1_ctx {
++	u64 count;
++        u32 state[5];
++        u8 buffer[64];
++};
++
++void sha1_init(void *ctx);
++void sha1_update(void *ctx, const u8 *data, unsigned int len);
++void sha1_final(void* ctx, u8 *out);
++#endif
++
++#ifdef CONFIG_CRYPTO_SHA256
++#define SHA256_DIGEST_SIZE      32
++
++struct sha256_ctx {
++	u32 count[2];
++        u32 state[8];
++        u8 buf[128];
++};
++
++void sha256_init(void *ctx);
++void sha256_update(void *ctx, const u8 *data, unsigned int len);
++void sha256_final(void* ctx, u8 *out);
++#endif
++
++#endif
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/crypto/sha1.c linux-2.6.15/crypto/sha1.c
+--- linux-2.6.15.ref/crypto/sha1.c	2006-01-25 20:51:16.000000000 -0800
++++ linux-2.6.15/crypto/sha1.c	2007-07-06 12:25:18.000000000 -0700
+@@ -33,7 +33,11 @@
+         u8 buffer[64];
+ };
+ 
++#ifdef CONFIG_TANGOX
++void sha1_init(void *ctx)
++#else
+ static void sha1_init(void *ctx)
++#endif
+ {
+ 	struct sha1_ctx *sctx = ctx;
+ 	static const struct sha1_ctx initstate = {
+@@ -45,7 +49,11 @@
+ 	*sctx = initstate;
+ }
+ 
++#ifdef CONFIG_TANGOX
++void sha1_update(void *ctx, const u8 *data, unsigned int len)
++#else
+ static void sha1_update(void *ctx, const u8 *data, unsigned int len)
++#endif
+ {
+ 	struct sha1_ctx *sctx = ctx;
+ 	unsigned int i, j;
+@@ -69,7 +77,11 @@
+ 
+ 
+ /* Add padding and return the message digest. */
++#ifdef CONFIG_TANGOX
++void sha1_final(void* ctx, u8 *out)
++#else
+ static void sha1_final(void* ctx, u8 *out)
++#endif
+ {
+ 	struct sha1_ctx *sctx = ctx;
+ 	u32 i, j, index, padlen;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/crypto/sha256.c linux-2.6.15/crypto/sha256.c
+--- linux-2.6.15.ref/crypto/sha256.c	2006-01-25 20:51:16.000000000 -0800
++++ linux-2.6.15/crypto/sha256.c	2007-07-06 12:27:01.000000000 -0700
+@@ -229,7 +229,11 @@
+ 	memset(W, 0, 64 * sizeof(u32));
+ }
+ 
++#ifdef CONFIG_TANGOX
++void sha256_init(void *ctx)
++#else
+ static void sha256_init(void *ctx)
++#endif
+ {
+ 	struct sha256_ctx *sctx = ctx;
+ 	sctx->state[0] = H0;
+@@ -244,7 +248,11 @@
+ 	memset(sctx->buf, 0, sizeof(sctx->buf));
+ }
+ 
++#ifdef CONFIG_TANGOX
++void sha256_update(void *ctx, const u8 *data, unsigned int len)
++#else
+ static void sha256_update(void *ctx, const u8 *data, unsigned int len)
++#endif
+ {
+ 	struct sha256_ctx *sctx = ctx;
+ 	unsigned int i, index, part_len;
+@@ -275,8 +283,12 @@
+ 	/* Buffer remaining input */
+ 	memcpy(&sctx->buf[index], &data[i], len-i);
+ }
+-
++ 
++#ifdef CONFIG_TANGOX
++void sha256_final(void* ctx, u8 *out)
++#else
+ static void sha256_final(void* ctx, u8 *out)
++#endif
+ {
+ 	struct sha256_ctx *sctx = ctx;
+ 	u8 bits[8];
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux-2.6.15.ref/README.1027.sha.patch linux-2.6.15/README.1027.sha.patch
+--- linux-2.6.15.ref/README.1027.sha.patch	1969-12-31 16:00:00.000000000 -0800
++++ linux-2.6.15/README.1027.sha.patch	2007-07-06 12:39:19.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Making use of the SHA1, SHA256 engine from kernel's crypto implementation.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP86xx xx=?
++-----------------------------------------
++ES6 or above
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

@@ -1,0 +1,179 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/traps.c linuxmips-2.4.30/arch/mips/kernel/traps.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/traps.c	2005-03-25 19:02:21.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/kernel/traps.c	2005-03-25 19:21:38.000000000 -0800
+@@ -118,6 +118,11 @@
+ 
+ #endif
+ 
++#ifdef CONFIG_TANGO2
++#undef printk
++#define printk the_REAL_printk
++#endif /* CONFIG_TANGO2 */
++
+ /*
+  * This routine abuses get_user()/put_user() to reference pointers
+  * with at least a bit of error checking ...
+@@ -253,6 +258,11 @@
+ 	printk("\n");
+ }
+ 
++#ifdef CONFIG_TANGO2
++#undef printk
++#define printk emprintk
++#endif /* CONFIG_TANGO2 */
++
+ static spinlock_t die_lock = SPIN_LOCK_UNLOCKED;
+ 
+ void __die(const char * str, struct pt_regs * regs, const char * file,
+@@ -880,9 +890,16 @@
+ 
+ 	exception_handlers[n] = handler;
+ 	if (n == 0 && cpu_has_divec) {
++#ifdef CONFIG_TANGO2
++//		emprintk("Accessing vector %p\n",read_c0_ebase() + 0x200);
++		*(volatile u32 *)(read_c0_ebase()+0x200) = 0x08000000 |
++						(0x03ffffff & (handler >> 2));
++		flush_icache_range(read_c0_ebase()+0x200, read_c0_ebase() + 0x204);
++#else
+ 		*(volatile u32 *)(KSEG0+0x200) = 0x08000000 |
+ 		                                 (0x03ffffff & (handler >> 2));
+ 		flush_icache_range(KSEG0+0x200, KSEG0 + 0x204);
++#endif /* CONFIG_TANGO2 */
+ 	}
+ 	return (void *)old_handler;
+ }
+@@ -937,7 +954,12 @@
+ 	unsigned long i;
+ 
+ 	/* Copy the generic exception handler code to it's final destination. */
++#ifdef CONFIG_TANGO2
++//	emprintk("Accessing vector %p\n",read_c0_ebase() + 0x80);
++	memcpy((void *)(read_c0_ebase() + 0x80), &except_vec1_generic, 0x80);
++#else
+ 	memcpy((void *)(KSEG0 + 0x80), &except_vec1_generic, 0x80);
++#endif /* CONFIG_TANGO2 */
+ 
+ 	/*
+ 	 * Setup default vectors
+@@ -949,8 +971,14 @@
+ 	 * Copy the EJTAG debug exception vector handler code to it's final
+ 	 * destination.
+ 	 */
+-	if (cpu_has_ejtag)
++	if (cpu_has_ejtag) {
++#ifdef CONFIG_TANGO2
++//		emprintk("Accessing vector %p\n",read_c0_ebase() + 0x300);
++		memcpy((void *)(read_c0_ebase() + 0x300), &except_vec_ejtag_debug, 0x80);
++#else
+ 		memcpy((void *)(KSEG0 + 0x300), &except_vec_ejtag_debug, 0x80);
++#endif /* CONFIG_TANGO2 */
++	}
+ 
+ 	/*
+ 	 * Only some CPUs have the watch exceptions.
+@@ -962,8 +990,15 @@
+ 	 * Some MIPS CPUs have a dedicated interrupt vector which reduces the
+ 	 * interrupt processing overhead.  Use it where available.
+ 	 */
+-	if (cpu_has_divec)
++	if (cpu_has_divec) {
++#ifdef CONFIG_TANGO2
++//		emprintk("Accessing vector %p\n",read_c0_ebase() + 0x200);
++		memcpy((void *)(read_c0_ebase() + 0x200), &except_vec4,
++8);
++#else
+ 		memcpy((void *)(KSEG0 + 0x200), &except_vec4, 8);
++#endif /* CONFIG_TANGO2 */
++	}
+ 
+ 	/*
+ 	 * Some CPUs can enable/disable for cache parity detection, but does
+@@ -1004,9 +1039,14 @@
+ 
+ 	if (cpu_has_vce)
+ 		memcpy((void *)(KSEG0 + 0x180), &except_vec3_r4000, 0x80);
+-	else if (cpu_has_4kex)
++	else if (cpu_has_4kex) {
++#ifdef CONFIG_TANGO2
++//		emprintk("Accessing vector %p\n",read_c0_ebase() + 0x180);
++		memcpy((void *)(read_c0_ebase() + 0x180), &except_vec3_generic, 0x80);
++#else
+ 		memcpy((void *)(KSEG0 + 0x180), &except_vec3_generic, 0x80);
+-	else
++#endif /* CONFIG_TANGO2 */
++	} else
+ 		memcpy((void *)(KSEG0 + 0x080), &except_vec3_generic, 0x80);
+ 
+ 	if (current_cpu_data.cputype == CPU_R6000 ||
+@@ -1034,7 +1074,11 @@
+ 	if (board_nmi_handler_setup)
+ 		board_nmi_handler_setup();
+ 
++#ifdef CONFIG_TANGO2
++	flush_icache_range(read_c0_ebase(), read_c0_ebase() + 0x400);
++#else
+ 	flush_icache_range(KSEG0, KSEG0 + 0x400);
++#endif /* CONFIG_TANGO2 */
+ 
+ 	per_cpu_trap_init();
+ }
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/mm/c-r4k.c linuxmips-2.4.30/arch/mips/mm/c-r4k.c
+--- linuxmips-2.4.30.ref/arch/mips/mm/c-r4k.c	2005-02-06 13:55:42.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/mm/c-r4k.c	2005-03-25 19:21:38.000000000 -0800
+@@ -1070,8 +1070,13 @@
+ 	struct cpuinfo_mips *c = &current_cpu_data;
+ 
+ 	/* Default cache error handler for R4000 and R5000 family */
++#ifdef CONFIG_TANGO2
++//	emprintk("Accessing vector %p\n",read_c0_ebase() + 0x100);
++	memcpy((void *)(read_c0_ebase() + 0x100), &except_vec2_generic, 0x80);
++#else
+ 	memcpy((void *)(KSEG0 + 0x100), &except_vec2_generic, 0x80);
+ 	memcpy((void *)(KSEG1 + 0x100), &except_vec2_generic, 0x80);
++#endif /* CONFIG_TANGO2 */
+ 
+ 	probe_pcache();
+ 	setup_scache();
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/mm/tlb-r4k.c linuxmips-2.4.30/arch/mips/mm/tlb-r4k.c
+--- linuxmips-2.4.30.ref/arch/mips/mm/tlb-r4k.c	2004-11-25 14:18:38.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/mm/tlb-r4k.c	2005-03-25 19:21:38.000000000 -0800
+@@ -374,8 +374,16 @@
+ 			memcpy((void *)KSEG0, &except_vec0_nevada, 0x80);
+ 		else if (current_cpu_data.cputype == CPU_R4600)
+ 			memcpy((void *)KSEG0, &except_vec0_r4600, 0x80);
++#ifdef CONFIG_TANGO2
++		else {
++//			emprintk("Accessing vector %p\n",read_c0_ebase() + 0x80);
++			memcpy((void *)read_c0_ebase(), &except_vec0_r4000, 0x80);
++		}
++		flush_icache_range(read_c0_ebase(), read_c0_ebase() + 0x80);
++#else
+ 		else
+ 			memcpy((void *)KSEG0, &except_vec0_r4000, 0x80);
+ 		flush_icache_range(KSEG0, KSEG0 + 0x80);
++#endif /* CONFIG_TANGO2 */
+ 	}
+ }
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1002.vectors.patch linuxmips-2.4.30/README.1002.vectors.patch
+--- linuxmips-2.4.30.ref/README.1002.vectors.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1002.vectors.patch	2005-03-25 19:24:24.000000000 -0800
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Setup of interrupt vectors.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++Emmanuel Michon
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

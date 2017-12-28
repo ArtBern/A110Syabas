@@ -1,0 +1,730 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/config-tango2.in linuxmips-2.4.30/arch/mips/config-tango2.in
+--- linuxmips-2.4.30.ref/arch/mips/config-tango2.in	2007-02-28 15:19:28.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/config-tango2.in	2007-02-28 15:29:24.000000000 -0800
+@@ -63,5 +63,7 @@
+ 	bool 'Map DRAM1 with TLB (\"no\" for CPU remap instead)'  CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
+ fi
+  
++#define_bool CONFIG_UART_USE_SYSCLK y
++ 
+ endmenu
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/prom.c linuxmips-2.4.30/arch/mips/tango2/prom.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/prom.c	2007-02-28 15:19:29.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/prom.c	2007-02-28 15:29:24.000000000 -0800
+@@ -59,6 +59,8 @@
+ unsigned int xenv_uart_console_port = 0;
+ unsigned int xenv_uart_used_ports = 1;
+ 
++extern void tango2_init_uart_ports(void);
++
+ static unsigned int xenv_enabled_devices = 0;
+ static unsigned int xenv_isaide_timing_slot = 0;
+ static unsigned int xenv_isaide_irq = 0;
+@@ -405,6 +407,9 @@
+ 				}
+ 			}
+ 		}
++
++		/* Call out to initialize serial ports data */
++		tango2_init_uart_ports();
+ 	}
+ #endif
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/char/Config.in linuxmips-2.4.30/drivers/char/Config.in
+--- linuxmips-2.4.30.ref/drivers/char/Config.in	2005-02-11 13:09:56.000000000 -0800
++++ linuxmips-2.4.30/drivers/char/Config.in	2007-02-28 15:29:24.000000000 -0800
+@@ -25,6 +25,34 @@
+       tristate '   Dual serial port support' CONFIG_DUALSP_SERIAL
+    fi
+ fi
++if [ "$CONFIG_TANGO2" = "y" ]; then
++   if [ ! "$CONFIG_TANGO2_XENV" = "y" ]; then
++      if [ "$CONFIG_SERIAL" = "y" ]; then
++         int '  Default Baudrate' CONFIG_TANGO2_BASE_BAUD 115200
++         int '  Number of serial ports (1 or 2)' CONFIG_SERIAL_TANGO2_UARTNR 1
++         bool '  Swap serial ports' CONFIG_SERIAL_TANGO2_SWAPPORT
++         if [ "$CONFIG_SERIAL_TANGO2_UARTNR" = "1" ]; then
++	    if [ "$CONFIG_SERIAL_TANGO2_SWAPPORT" = "y" ]; then
++               bool '  Enable GPIO full functionality on UART0' CONFIG_TANGO2_UART0_AS_GPIO_FULL
++               bool '  Enable GPIO partial functionality on UART1' CONFIG_TANGO2_UART1_AS_GPIO_PARTIAL
++	    else
++               bool '  Enable GPIO full functionality on UART1' CONFIG_TANGO2_UART1_AS_GPIO_FULL
++               bool '  Enable GPIO partial functionality on UART0' CONFIG_TANGO2_UART0_AS_GPIO_PARTIAL
++            fi
++         else
++            bool 'Enable GPIO partial functionality on UART0' CONFIG_TANGO2_UART0_AS_GPIO_PARTIAL
++            bool 'Enable GPIO partial functionality on UART1' CONFIG_TANGO2_UART1_AS_GPIO_PARTIAL
++         fi
++      else
++         bool 'Enable GPIO full functionality on UART0' CONFIG_TANGO2_UART0_AS_GPIO_FULL
++         bool 'Enable GPIO full functionality on UART1' CONFIG_TANGO2_UART1_AS_GPIO_FULL
++      fi
++   else
++         int '  Default Baudrate' CONFIG_TANGO2_BASE_BAUD 115200
++         define_bool CONFIG_SERIAL_TANGO2_SWAPPORT n
++         define_int CONFIG_SERIAL_TANGO2_UARTNR 1
++   fi
++fi
+ dep_mbool 'Extended dumb serial driver options' CONFIG_SERIAL_EXTENDED $CONFIG_SERIAL
+ if [ "$CONFIG_SERIAL_EXTENDED" = "y" ]; then
+    bool '  Support more than 4 serial ports' CONFIG_SERIAL_MANY_PORTS
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/char/serial.c linuxmips-2.4.30/drivers/char/serial.c
+--- linuxmips-2.4.30.ref/drivers/char/serial.c	2004-12-26 20:13:43.000000000 -0800
++++ linuxmips-2.4.30/drivers/char/serial.c	2007-02-28 15:59:51.000000000 -0800
+@@ -124,10 +124,12 @@
+ #ifndef CONFIG_SERIAL_SHARE_IRQ
+ #define CONFIG_SERIAL_SHARE_IRQ
+ #endif
++#ifndef CONFIG_TANGO2
+ #ifndef CONFIG_SERIAL_MANY_PORTS
+ #define CONFIG_SERIAL_MANY_PORTS
+ #endif
+ #endif
++#endif
+ 
+ #ifdef CONFIG_SERIAL_ACPI
+ #define ENABLE_SERIAL_ACPI
+@@ -295,6 +297,17 @@
+ static void change_speed(struct async_struct *info, struct termios *old);
+ static void rs_wait_until_sent(struct tty_struct *tty, int timeout);
+ 
++#ifdef CONFIG_TANGO2
++#include <asm/tango2/rmdefs.h>
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++extern unsigned long em8xxx_baudrates[2];
++#endif
++#if defined(CONFIG_TANGO2_XENV)
++extern unsigned int xenv_uart_console_port;
++extern unsigned int xenv_uart_used_ports;
++#endif
++#endif
++
+ /*
+  * Here we define the default xmit fifo size used for each type of
+  * UART
+@@ -306,7 +319,11 @@
+ 	{ "16550", 1, 0 }, 
+ 	{ "16550A", 16, UART_CLEAR_FIFO | UART_USE_FIFO }, 
+ 	{ "cirrus", 1, 0 }, 	/* usurped by cyclades.c */
++#ifdef CONFIG_TANGO2
++	{ "ST16650", 1, UART_CLEAR_FIFO | UART_STARTECH | UART_USE_FIFO }, 
++#else
+ 	{ "ST16650", 1, UART_CLEAR_FIFO | UART_STARTECH }, 
++#endif
+ 	{ "ST16650V2", 32, UART_CLEAR_FIFO | UART_USE_FIFO |
+ 		  UART_STARTECH }, 
+ 	{ "TI16750", 64, UART_CLEAR_FIFO | UART_USE_FIFO},
+@@ -397,6 +414,46 @@
+ static struct semaphore tmp_buf_sem = MUTEX;
+ #endif
+ 
++#if defined(CONFIG_TANGO2_XENV)
++/* Change rs_table[] based on xenv block before serial port initialization starts */
++void tango2_init_uart_ports(void)
++{
++	int idx = 0;
++
++	/* Find the index of the entry */
++	for (idx = 0; idx < serial_nr_ports; idx++) {
++		if (rs_table[idx].iomem_base == (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base))
++			break;
++	}
++
++	if (xenv_uart_console_port == 0) {
++		rs_table[idx].irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART0_INT;
++		rs_table[idx].iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base);
++		rs_table[idx].baud_base = em8xxx_baudrates[0];
++		rs_table[idx + 1].irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART1_INT;
++		rs_table[idx + 1].iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base);
++		rs_table[idx + 1].baud_base = em8xxx_baudrates[1];
++	} else {
++		rs_table[idx].irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART1_INT;
++		rs_table[idx].iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base);
++		rs_table[idx].baud_base = em8xxx_baudrates[1];
++		rs_table[idx + 1].irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART0_INT;
++		rs_table[idx + 1].iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base);
++		rs_table[idx + 1].baud_base = em8xxx_baudrates[0];
++	}
++
++	/* Only one UART port is used? */
++	if ((xenv_uart_used_ports == 1) || ((xenv_uart_used_ports == 2) && (xenv_uart_console_port != 0))) {
++		if (serial_nr_ports > 2) {
++			/* Move the rest of data forward by one slot */
++			for (idx += 2; idx < serial_nr_ports; idx++) {
++				memcpy(&rs_table[idx - 1], &rs_table[idx], sizeof(struct serial_state));
++			}
++		}
++		serial_nr_ports--;
++	}
++}
++#endif
+ 
+ static inline int serial_paranoia_check(struct async_struct *info,
+ 					kdev_t device, const char *routine)
+@@ -444,8 +501,18 @@
+ 		return inb(info->port+1);
+ #endif
+ 	case SERIAL_IO_MEM:
++#ifdef CONFIG_TANGO2
++		{
++			unsigned long a=(unsigned long) info->iomem_base + (offset<<info->iomem_reg_shift);
++			unsigned long v=gbus_read_uint32(pGBus, a);
++
++			//if ((offset!=UART_IER)&&(offset!=UART_LSR)) emprintk("*%p reads %p\n",a,v);
++			return v;
++		}
++#else
+ 		return readb((unsigned long) info->iomem_base +
+ 			     (offset<<info->iomem_reg_shift));
++#endif /* CONFIG_TANGO2 */
+ 	default:
+ 		return inb(info->port + offset);
+ 	}
+@@ -462,9 +529,42 @@
+ 		break;
+ #endif
+ 	case SERIAL_IO_MEM:
++#ifdef CONFIG_TANGO2
++		{
++#ifdef CONFIG_UART_USE_SYSCLK
++			extern unsigned long em8xxx_sys_frequency;
++#endif
++			unsigned long a=(unsigned long) info->iomem_base + (offset<<info->iomem_reg_shift);
++
++			if (offset==UART_DL) {
++#ifdef CONFIG_QUICKTURN
++				//emprintk("converting %d to %d\n",value,TANGO2_CPU_FREQUENCY/16/(TANGO2_BASE_BAUD*value));
++				value=13;
++#elif defined(CONFIG_TANGO2_SMP863X)
++				unsigned int div;
++#ifdef CONFIG_UART_USE_SYSCLK
++				div = em8xxx_sys_frequency / (16 * info->state->baud_base);
++#else
++				div = ((TANGO2_BASE_FREQUENCY * 10) / ((16 * info->state->baud_base) / value)); 
++				if ((div % 10) < 5)
++					div = (div / 10);
++				else
++					div = (div / 10) + 1;
++#endif
++				value = div;
++#else
++#error emhack not ported
++#endif /* CONFIG_QUICKTURN */
++			}
++			//if ((offset!=UART_IER)&&(offset!=UART_TX)) emprintk("*%p = %p\n",a,value);
++			gbus_write_uint32(pGBus, a, value);
++			break;
++		}
++#else
+ 		writeb(value, (unsigned long) info->iomem_base +
+ 			      (offset<<info->iomem_reg_shift));
+ 		break;
++#endif /* CONFIG_TANGO2 */
+ 	default:
+ 		outb(value, info->port+offset);
+ 	}
+@@ -1666,6 +1766,7 @@
+ 	unsigned cflag, cval, fcr = 0;
+ 	int	bits;
+ 	unsigned long	flags;
++//	struct serial_state *async_s_state = info->state;
+ 
+ 	if (!info->tty || !info->tty->termios)
+ 		return;
+@@ -1700,7 +1801,12 @@
+ 	/* Determine divisor based on baud rate */
+ 	baud = tty_get_baud_rate(info->tty);
+ 	if (!baud)
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++		baud = em8xxx_baudrates[((info->state->iomem_base == (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base)) ? 1 : 0)]; 
++#else
+ 		baud = 9600;	/* B0 transition handled in rs_set_termios */
++#endif
++
+ #ifdef CONFIG_SERIAL_RSA
+ 	if ((info->state->type == PORT_RSA) &&
+ 	    (info->state->baud_base != SERIAL_RSA_BAUD_BASE) &&
+@@ -1736,7 +1842,11 @@
+ 		info->tty->termios->c_cflag |= (old_termios->c_cflag & CBAUD);
+ 		baud = tty_get_baud_rate(info->tty);
+ 		if (!baud)
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++			baud = em8xxx_baudrates[((info->state->iomem_base == (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base)) ? 1 : 0)]; 
++#else
+ 			baud = 9600;
++#endif
+ 		if (baud == 38400 &&
+ 		    ((info->flags & ASYNC_SPD_MASK) == ASYNC_SPD_CUST))
+ 			quot = info->state->custom_divisor;
+@@ -1751,6 +1861,7 @@
+ 	/* As a last resort, if the quotient is zero, default to 9600 bps */
+ 	if (!quot)
+ 		quot = baud_base / 9600;
++
+ 	/*
+ 	 * Work around a bug in the Oxford Semiconductor 952 rev B
+ 	 * chip which causes it to seriously miscalculate baud rates
+@@ -1833,8 +1944,12 @@
+ 			    (cflag & CRTSCTS) ? UART_EFR_CTS : 0);
+ 	}
+ 	serial_outp(info, UART_LCR, cval | UART_LCR_DLAB);	/* set DLAB */
++#ifdef CONFIG_TANGO2
++	serial_out(info, UART_DL, quot);
++#else
+ 	serial_outp(info, UART_DLL, quot & 0xff);	/* LS of divisor */
+ 	serial_outp(info, UART_DLM, quot >> 8);		/* MS of divisor */
++#endif /* CONFIG_TANGO2 */
+ 	if (info->state->type == PORT_16750)
+ 		serial_outp(info, UART_FCR, fcr); 	/* set fcr */
+ 	serial_outp(info, UART_LCR, cval);		/* reset DLAB */
+@@ -2174,7 +2289,7 @@
+ 
+ 	/* Make sure address is not already in use */
+ 	if (new_serial.type) {
+-		for (i = 0 ; i < NR_PORTS; i++)
++		for (i = 0 ; i < serial_nr_ports; i++)
+ 			if ((state != &rs_table[i]) &&
+ 			    (rs_table[i].io_type == SERIAL_IO_PORT) &&
+ 			    (rs_table[i].port == new_port) &&
+@@ -3189,7 +3304,7 @@
+ 
+ 	MOD_INC_USE_COUNT;
+ 	line = MINOR(tty->device) - tty->driver.minor_start;
+-	if ((line < 0) || (line >= NR_PORTS)) {
++	if ((line < 0) || (line >= serial_nr_ports)) {
+ 		MOD_DEC_USE_COUNT;
+ 		return -ENODEV;
+ 	}
+@@ -3373,7 +3488,7 @@
+ 
+ 	len += sprintf(page, "serinfo:1.0 driver:%s%s revision:%s\n",
+ 		       serial_version, LOCAL_VERSTRING, serial_revdate);
+-	for (i = 0; i < NR_PORTS && len < 4000; i++) {
++	for (i = 0; i < serial_nr_ports && len < 4000; i++) {
+ 		l = line_info(page + len, &rs_table[i]);
+ 		len += l;
+ 		if (len+begin > off+count)
+@@ -3536,10 +3651,16 @@
+ 		    UART_FCR_CLEAR_RCVR | UART_FCR_CLEAR_XMIT);
+ 	serial_outp(info, UART_MCR, UART_MCR_LOOP);
+ 	serial_outp(info, UART_LCR, UART_LCR_DLAB);
++#ifdef CONFIG_TANGO2
++	old_dll = serial_inp(info, UART_DL)&0xff;
++	old_dlm = serial_inp(info, UART_DL)>>8;
++	serial_outp(info, UART_DL, 0x01);
++#else
+ 	old_dll = serial_inp(info, UART_DLL);
+ 	old_dlm = serial_inp(info, UART_DLM);
+ 	serial_outp(info, UART_DLL, 0x01);
+ 	serial_outp(info, UART_DLM, 0x00);
++#endif /* CONFIG_TANGO2 */
+ 	serial_outp(info, UART_LCR, 0x03);
+ 	for (count = 0; count < 256; count++)
+ 		serial_outp(info, UART_TX, count);
+@@ -3550,8 +3671,12 @@
+ 	serial_outp(info, UART_FCR, old_fcr);
+ 	serial_outp(info, UART_MCR, old_mcr);
+ 	serial_outp(info, UART_LCR, UART_LCR_DLAB);
++#ifdef CONFIG_TANGO2
++	serial_outp(info, UART_DL, (old_dlm<<8)|old_dll);
++#else
+ 	serial_outp(info, UART_DLL, old_dll);
+ 	serial_outp(info, UART_DLM, old_dlm);
++#endif /* CONFIG_TANGO2 */
+ 
+ 	return count;
+ }
+@@ -3618,6 +3743,14 @@
+ 	/* Save the DLL and DLM */
+ 
+ 	serial_outp(info, UART_LCR, UART_LCR_DLAB);
++#ifdef CONFIG_TANGO2
++	scratch3 = serial_inp(info, UART_DL)&0xff;
++	scratch4 = serial_inp(info, UART_DL)>>8;
++
++	serial_outp(info, UART_DL, 0);
++	scratch2 = serial_inp(info, UART_DL)&0xff;
++	scratch = serial_inp(info, UART_DL)>>8;
++#else    
+ 	scratch3 = serial_inp(info, UART_DLL);
+ 	scratch4 = serial_inp(info, UART_DLM);
+ 
+@@ -3625,6 +3758,7 @@
+ 	serial_outp(info, UART_DLM, 0);
+ 	scratch2 = serial_inp(info, UART_DLL);
+ 	scratch = serial_inp(info, UART_DLM);
++#endif /* CONFIG_TANGO2 */
+ 	serial_outp(info, UART_LCR, 0);
+ 
+ 	if (scratch == 0x10 || scratch == 0x14) {
+@@ -3637,8 +3771,12 @@
+ 	/* Restore the DLL and DLM */
+ 
+ 	serial_outp(info, UART_LCR, UART_LCR_DLAB);
++#ifdef CONFIG_TANGO2
++	serial_outp(info, UART_DL, (scratch4<<8)|scratch3);
++#else
+ 	serial_outp(info, UART_DLL, scratch3);
+ 	serial_outp(info, UART_DLM, scratch4);
++#endif /* CONFIG_TANGO2 */
+ 	serial_outp(info, UART_LCR, 0);
+ 	/*
+ 	 * We distinguish between the '654 and the '650 by counting
+@@ -4604,7 +4742,7 @@
+ 	 * Iterate through all of the ports finding those that belong
+ 	 * to this PCI device.
+ 	 */
+-	for(i = 0; i < NR_PORTS; i++) {
++	for(i = 0; i < serial_nr_ports; i++) {
+ 		if (rs_table[i].dev != dev)
+ 			continue;
+ 		unregister_serial(i);
+@@ -5294,7 +5432,7 @@
+ 	struct isapnp_irq *irq;
+ 	struct isapnp_resources *res = dev->sysdata;
+ 
+-	for (i = 0; i < NR_PORTS; i++) {
++	for (i = 0; i < serial_nr_ports; i++) {
+ 		if (state->type != PORT_UNKNOWN)
+ 			clear_bit(state->irq, &map);
+ 		state++;
+@@ -5454,12 +5592,21 @@
+ 	 *	can't be shared.
+ 	 */
+ 	if (sercons.flags & CON_CONSDEV) {
+-		for(i = 0; i < NR_PORTS; i++)
++		for(i = 0; i < serial_nr_ports; i++)
+ 			if (i != sercons.index &&
+ 			    rs_table[i].irq == rs_table[sercons.index].irq)
+ 				rs_table[i].irq = 0;
+ 	}
+ #endif
++
++#ifdef CONFIG_TANGO2
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	for (i = 0; i < serial_nr_ports; i++)
++		rs_table[i].baud_base = 
++			(rs_table[i].iomem_base == (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base))
++				? em8xxx_baudrates[1] : em8xxx_baudrates[0];
++#endif
++#endif
+ 	show_serial_version();
+ 
+ 	/* Initialize the tty_driver structure */
+@@ -5477,7 +5624,7 @@
+ 	serial_driver.major = TTY_MAJOR;
+ 	serial_driver.minor_start = 64 + SERIAL_DEV_OFFSET;
+ 	serial_driver.name_base = SERIAL_DEV_OFFSET;
+-	serial_driver.num = NR_PORTS;
++	serial_driver.num = serial_nr_ports;
+ 	serial_driver.type = TTY_DRIVER_TYPE_SERIAL;
+ 	serial_driver.subtype = SERIAL_TYPE_NORMAL;
+ 	serial_driver.init_termios = tty_std_termios;
+@@ -5535,7 +5682,7 @@
+ 	if (tty_register_driver(&callout_driver))
+ 		panic("Couldn't register callout driver\n");
+ 	
+-	for (i = 0, state = rs_table; i < NR_PORTS; i++,state++) {
++	for (i = 0, state = rs_table; i < serial_nr_ports; i++,state++) {
+ 		state->magic = SSTATE_MAGIC;
+ 		state->line = i;
+ 		state->type = PORT_UNKNOWN;
+@@ -5561,7 +5708,7 @@
+ 		if (state->flags & ASYNC_BOOT_AUTOCONF)
+ 			autoconfig(state);
+ 	}
+-	for (i = 0, state = rs_table; i < NR_PORTS; i++,state++) {
++	for (i = 0, state = rs_table; i < serial_nr_ports; i++,state++) {
+ 		if (state->type == PORT_UNKNOWN)
+ 			continue;
+ 		if (   (state->flags & ASYNC_BOOT_AUTOCONF)
+@@ -5658,26 +5805,26 @@
+ 		port += (unsigned long) req->port_high << HIGH_BITS_OFFSET;
+ 
+ 	save_flags(flags); cli();
+-	for (i = 0; i < NR_PORTS; i++) {
++	for (i = 0; i < serial_nr_ports; i++) {
+ 		if ((rs_table[i].port == port) &&
+ 		    (rs_table[i].iomem_base == req->iomem_base))
+ 			break;
+ 	}
+ #ifdef __i386__
+-	if (i == NR_PORTS) {
+-		for (i = 4; i < NR_PORTS; i++)
++	if (i == serial_nr_ports) {
++		for (i = 4; i < serial_nr_ports; i++)
+ 			if ((rs_table[i].type == PORT_UNKNOWN) &&
+ 			    (rs_table[i].count == 0))
+ 				break;
+ 	}
+ #endif
+-	if (i == NR_PORTS) {
+-		for (i = 0; i < NR_PORTS; i++)
++	if (i == serial_nr_ports) {
++		for (i = 0; i < serial_nr_ports; i++)
+ 			if ((rs_table[i].type == PORT_UNKNOWN) &&
+ 			    (rs_table[i].count == 0))
+ 				break;
+ 	}
+-	if (i == NR_PORTS) {
++	if (i == serial_nr_ports) {
+ 		restore_flags(flags);
+ 		return -1;
+ 	}
+@@ -5774,7 +5921,7 @@
+ 		       e2);
+ 	restore_flags(flags);
+ 
+-	for (i = 0; i < NR_PORTS; i++) {
++	for (i = 0; i < serial_nr_ports; i++) {
+ 		if ((info = rs_table[i].info)) {
+ 			rs_table[i].info = NULL;
+ 			kfree(info);
+@@ -5921,7 +6068,11 @@
+ 	static struct async_struct *info;
+ 	struct serial_state *state;
+ 	unsigned cval;
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	int	baud = em8xxx_baudrates[xenv_uart_console_port];
++#else
+ 	int	baud = 9600;
++#endif
+ 	int	bits = 8;
+ 	int	parity = 'n';
+ 	int	doflow = 0;
+@@ -5996,6 +6147,13 @@
+ 	 *	Divisor, bytesize and parity
+ 	 */
+ 	state = rs_table + co->index;
++
++#ifdef CONFIG_TANGO2
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	if (em8xxx_baudrates[xenv_uart_console_port] != 0)
++		state->baud_base = em8xxx_baudrates[xenv_uart_console_port];
++#endif
++#endif
+ 	if (doflow)
+ 		state->flags |= ASYNC_CONS_FLOW;
+ 	info = &async_sercons;
+@@ -6026,8 +6184,15 @@
+ 	 *	and set speed.
+ 	 */
+ 	serial_out(info, UART_LCR, cval | UART_LCR_DLAB);	/* set DLAB */
++#ifdef CONFIG_TANGO2
++#if !defined(CONFIG_TANGO2_XENV)
++	serial_out(info, UART_GPIOMODE, 0xff00);
++#endif
++	serial_out(info, UART_DL, quot);
++#else
+ 	serial_out(info, UART_DLL, quot & 0xff);	/* LS of divisor */
+ 	serial_out(info, UART_DLM, quot >> 8);		/* MS of divisor */
++#endif /* CONFIG_TANGO2 */
+ 	serial_out(info, UART_LCR, cval);		/* reset DLAB */
+ 	serial_out(info, UART_IER, 0);
+ 	serial_out(info, UART_MCR, UART_MCR_DTR | UART_MCR_RTS);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/serial.h linuxmips-2.4.30/include/asm-mips/serial.h
+--- linuxmips-2.4.30.ref/include/asm-mips/serial.h	2004-08-19 15:33:33.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/serial.h	2007-02-28 15:29:24.000000000 -0800
+@@ -87,6 +87,129 @@
+ #define ATLAS_SERIAL_PORT_DEFNS
+ #endif
+ 
++#ifdef CONFIG_TANGO2
++#include <asm/tango2/tango2.h>
++#ifdef CONFIG_TANGO2_SMP863X
++#if defined(CONFIG_TANGO2_XENV)
++#define TANGO2_SERIAL_PORT_DEFNS                                       \
++	{ .baud_base = TANGO2_BASE_BAUD, 			       \
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART0_INT,           \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base), \
++	  .iomem_reg_shift = 2,       \
++          .io_type = SERIAL_IO_MEM }, \
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART1_INT,            \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base), \
++	  .iomem_reg_shift = 2,       \
++          .io_type = SERIAL_IO_MEM },
++#else
++#if CONFIG_SERIAL_TANGO2_UARTNR == 1	/* Use UART0 or UART1 */
++#ifdef CONFIG_SERIAL_TANGO2_SWAPPORT	/* UART1 */	
++#define TANGO2_SERIAL_PORT_DEFNS                                       \
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART1_INT,            \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base), \
++	   .iomem_reg_shift = 2,       					\
++          .io_type = SERIAL_IO_MEM },	
++#else /* UART0 */
++#define TANGO2_SERIAL_PORT_DEFNS                                \
++	{ .baud_base = TANGO2_BASE_BAUD, 			\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART0_INT,    \
++          .flags = STD_COM_FLAGS,                               \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base), \
++	  .iomem_reg_shift = 2,       				\
++          .io_type = SERIAL_IO_MEM }, 
++#endif
++#else /* Use 2 ports */
++#ifdef CONFIG_SERIAL_TANGO2_SWAPPORT	/* UART1, UART0 */
++#define TANGO2_SERIAL_PORT_DEFNS                                       \
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART1_INT,            \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base), \
++	  .iomem_reg_shift = 2,       					\
++          .io_type = SERIAL_IO_MEM },					\
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART0_INT ,           \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base), \
++	  .iomem_reg_shift = 2,       					\
++          .io_type = SERIAL_IO_MEM }, 
++#else /* UART0, UART1 */
++#define TANGO2_SERIAL_PORT_DEFNS                                       \
++	{ .baud_base = TANGO2_BASE_BAUD, 			       \
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART0_INT,           \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base), \
++	  .iomem_reg_shift = 2,       \
++          .io_type = SERIAL_IO_MEM }, \
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART1_INT,            \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base), \
++	  .iomem_reg_shift = 2,       \
++          .io_type = SERIAL_IO_MEM },
++#endif /* CONFIG_SERIAL_TANGO2_SWAPPPORT */
++#endif /* CONFIG_SERIAL_TANGO2_UARTNR == 1 */
++#endif /* CONFIG_TANGO2_XENV */
++#elif defined(CONFIG_QUICKTURN) 
++#if CONFIG_SERIAL_TANGO2_UARTNR == 1	/* Use UART0 or UART1 */
++#ifdef CONFIG_SERIAL_TANGO2_SWAPPORT	/* UART1 */	
++#define TANGO2_SERIAL_PORT_DEFNS                                       \
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = 0, 							\
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base), \
++	   .iomem_reg_shift = 2,       					\
++          .io_type = SERIAL_IO_MEM },	
++#else /* UART0 */
++#define TANGO2_SERIAL_PORT_DEFNS                                \
++	{ .baud_base = TANGO2_BASE_BAUD, 			\
++	  .irq = 0,						\
++          .flags = STD_COM_FLAGS,                               \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base), \
++	  .iomem_reg_shift = 2,       				\
++          .io_type = SERIAL_IO_MEM }, 
++#endif
++#else /* Use 2 ports */
++#ifdef CONFIG_SERIAL_TANGO2_SWAPPORT	/* UART1, UART0 */
++#define TANGO2_SERIAL_PORT_DEFNS                                       \
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = 0,							\
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base), \
++	  .iomem_reg_shift = 2,       					\
++          .io_type = SERIAL_IO_MEM },					\
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART0_INT ,           \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base), \
++	  .iomem_reg_shift = 2,       					\
++          .io_type = SERIAL_IO_MEM }, 
++#else /* UART0, UART1 */
++#define TANGO2_SERIAL_PORT_DEFNS                                       \
++	{ .baud_base = TANGO2_BASE_BAUD, 			       \
++	  .irq = 0,							\
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART0_base), \
++	  .iomem_reg_shift = 2,       \
++          .io_type = SERIAL_IO_MEM }, \
++	{ .baud_base = TANGO2_BASE_BAUD, 				\
++	  .irq = IRQ_CONTROLLER_IRQ_BASE+LOG2_CPU_UART1_INT,            \
++          .flags = STD_COM_FLAGS,                                      \
++          .iomem_base = (unsigned char *)(REG_BASE_cpu_block+CPU_UART1_base), \
++	  .iomem_reg_shift = 2,       \
++          .io_type = SERIAL_IO_MEM },
++#endif /* CONFIG_SERIAL_TANGO2_SWAPPPORT */
++#endif /* CONFIG_SERIAL_TANGO2_UARTNR == 1 */
++#else /* !CONFIG_TANGO2_SMP863X && !CONFIG_QUICKTURN */
++#define TANGO2_SERIAL_PORT_DEFNS
++#endif
++#endif
++
+ #ifdef CONFIG_MIPS_SEAD
+ #include <asm/mips-boards/sead.h>
+ #include <asm/mips-boards/seadint.h>
+@@ -469,6 +592,7 @@
+ 
+ #define SERIAL_PORT_DFNS			\
+ 	ATLAS_SERIAL_PORT_DEFNS			\
++	TANGO2_SERIAL_PORT_DEFNS                \
+ 	AU1000_SERIAL_PORT_DEFNS		\
+ 	COBALT_SERIAL_PORT_DEFNS		\
+ 	DDB5477_SERIAL_PORT_DEFNS		\
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/serial_reg.h linuxmips-2.4.30/include/linux/serial_reg.h
+--- linuxmips-2.4.30.ref/include/linux/serial_reg.h	2001-06-13 21:24:27.000000000 -0700
++++ linuxmips-2.4.30/include/linux/serial_reg.h	2007-02-28 15:29:25.000000000 -0800
+@@ -13,7 +13,29 @@
+ 
+ #ifndef _LINUX_SERIAL_REG_H
+ #define _LINUX_SERIAL_REG_H
++ 
++#ifdef CONFIG_TANGO2
++// mapping of Tango2 uart is close but not identical to regular ones
++#define UART_RX        0
++#define UART_TX        1
++#define UART_IER       2
++#define UART_IIR       3
++#define UART_FCR       4
++#define UART_LCR       5
++#define UART_MCR       6
++#define UART_LSR       7
++#define UART_MSR       8
++#define UART_SCR       9
++#define UART_DL        10
++
++#define UART_GPIOMODE  14
++
++// ?
++#define UART_TRG       0
++#define UART_FCTR      1
++#define UART_EFR       2
+ 
++#else /* !CONFIG_TANGO2 */
+ #define UART_RX		0	/* In:  Receive buffer (DLAB=0) */
+ #define UART_TX		0	/* Out: Transmit buffer (DLAB=0) */
+ #define UART_DLL	0	/* Out: Divisor Latch Low (DLAB=1) */
+@@ -40,6 +62,7 @@
+ #define UART_EMSR	7	/* (LCR=BF) Extended Mode Select Register 
+ 				 * FCTR bit 6 selects SCR or EMSR
+ 				 * XR16c85x only */
++#endif /* CONFIG_TANGO2 */
+ 
+ /*
+  * These are the definitions for the FIFO Control Register
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1003.uart.patch linuxmips-2.4.30/README.1003.uart.patch
+--- linuxmips-2.4.30.ref/README.1003.uart.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1003.uart.patch	2007-02-28 16:00:25.000000000 -0800
+@@ -0,0 +1,19 @@
++Feature:
++--------
++UART driver for SMP863x.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++Emmanuel Michon/YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

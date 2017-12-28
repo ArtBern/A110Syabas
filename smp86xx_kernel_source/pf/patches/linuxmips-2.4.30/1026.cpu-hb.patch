@@ -1,0 +1,75 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/time.c linuxmips-2.4.30/arch/mips/kernel/time.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/time.c	2007-03-14 08:43:48.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/kernel/time.c	2007-03-14 08:46:29.000000000 -0700
+@@ -37,6 +37,7 @@
+ #include <asm/tango2/rmdefs.h>
+ #include <asm/tango2/tango2.h>
+ #include <asm/tango2/hardware.h>
++#include <asm/tango2/emhwlib_lram.h>
+ #endif
+ 
+ /*
+@@ -423,6 +424,7 @@
+ 	unsigned int count;
+ 
+ #ifdef CONFIG_TANGO2
++ 	static unsigned long ticks_count = 0;
+ 	static int active = 0;
+ 	static long drift = 0;
+ 	static unsigned long old_xtal = 0;
+@@ -433,6 +435,12 @@
+ 	/* Clear interrupt source */
+ 	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_time0_clr, 1);
+ #endif
++ 	if ((++ticks_count) == HZ) {
++ 		/* Increase the heart beat count */
++ 		ticks_count = 0;
++ 		gbus_write_uint32(pGBus, REG_BASE_cpu_block + LR_HB_CPU, 
++ 			gbus_read_uint32(pGBus, REG_BASE_cpu_block + LR_HB_CPU) + 1);
++ 	}
+ 
+ 	/* calibrate jiffies against xtal_in_cnt */
+ 	xtal = gbus_read_uint32(pGBus, REG_BASE_system_block + SYS_xtal_in_cnt);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/setup.c linuxmips-2.4.30/arch/mips/tango2/setup.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/setup.c	2007-03-14 08:44:11.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/tango2/setup.c	2007-03-14 08:46:29.000000000 -0700
+@@ -33,6 +33,7 @@
+ 
+ #include <asm/tango2/tango2.h>
+ #include <asm/tango2/rmdefs.h>
++#include <asm/tango2/emhwlib_lram.h>
+ 
+ extern int em86xx_sbox_init(void);
+ extern void pci_disable_device_all(void);
+@@ -189,6 +190,8 @@
+ 	/* Setup Timer0 as the source */
+ 	setup_irq(LOG2_CPU_TIMER0_INT + IRQ_CONTROLLER_IRQ_BASE, irq);
+ #endif
++	/* Clear heart beat counter */
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + LR_HB_CPU, 0);
+ }
+ 
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1026.cpu-hb.patch linuxmips-2.4.30/README.1026.cpu-hb.patch
+--- linuxmips-2.4.30.ref/README.1026.cpu-hb.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1026.cpu-hb.patch	2007-03-14 08:48:12.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Heart beat for CPU block.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

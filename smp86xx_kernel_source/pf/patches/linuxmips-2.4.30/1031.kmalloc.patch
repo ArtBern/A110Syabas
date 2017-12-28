@@ -1,0 +1,89 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/slab.h linuxmips-2.4.30/include/linux/slab.h
+--- linuxmips-2.4.30.ref/include/linux/slab.h	2007-01-16 11:57:58.000000000 -0800
++++ linuxmips-2.4.30/include/linux/slab.h	2007-01-16 11:59:17.000000000 -0800
+@@ -59,6 +59,8 @@
+ extern void kmem_cache_free(kmem_cache_t *, void *);
+ extern unsigned int kmem_cache_size(kmem_cache_t *);
+ 
++#define MAX_KMALLOC_ORDER       8  /* 2^8 pages max per kmalloc */
++
+ extern void *kmalloc(size_t, int);
+ extern void kfree(const void *);
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/mm/slab.c linuxmips-2.4.30/mm/slab.c
+--- linuxmips-2.4.30.ref/mm/slab.c	2007-01-16 11:57:58.000000000 -0800
++++ linuxmips-2.4.30/mm/slab.c	2007-01-16 11:59:30.000000000 -0800
+@@ -304,7 +304,7 @@
+ #endif
+ 
+ /* maximum size of an obj (in 2^order pages) */
+-#define	MAX_OBJ_ORDER	5	/* 32 pages */
++#define	MAX_OBJ_ORDER	MAX_KMALLOC_ORDER
+ 
+ /*
+  * Do not go above this order unless 0 objects fit into the slab.
+@@ -316,7 +316,7 @@
+ /*
+  * Absolute limit for the gfp order
+  */
+-#define	MAX_GFP_ORDER	5	/* 32 pages */
++#define	MAX_GFP_ORDER	MAX_KMALLOC_ORDER
+ 
+ 
+ /* Macros for storing/retrieving the cachep and or slab from the
+@@ -351,6 +351,33 @@
+ 	{ 32768,	NULL, NULL},
+ 	{ 65536,	NULL, NULL},
+ 	{131072,	NULL, NULL},
++#if (MAX_KMALLOC_ORDER > 5)
++	{262144,	NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 6)
++	{524288,	NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 7)
++	{1048576,	NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 8)
++	{2097152,       NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 9)
++	{4194304,       NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 10)
++	{8388608,       NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 11)
++	{16777216,       NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 12)
++	{33554432,       NULL, NULL},
++#endif
++#if (MAX_KMALLOC_ORDER > 13)
++#error MAX_KMALLOC_ORDER is too big!
++#endif
+ 	{     0,	NULL, NULL}
+ };
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1031.kmalloc.patch linuxmips-2.4.30/README.1031.kmalloc.patch
+--- linuxmips-2.4.30.ref/README.1031.kmalloc.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1031.kmalloc.patch	2007-01-16 12:00:53.000000000 -0800
+@@ -0,0 +1,18 @@
++Feature:
++--------
++Increase maximum size of kmalloc from 128KB to 1MB, or beyond.
++
++Prerequisite patch numbers:
++---------------------------
++none
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP86xx xx=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

@@ -1,0 +1,33 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/fs/isofs/inode.c linuxmips-2.4.30/fs/isofs/inode.c
+--- linuxmips-2.4.30.ref/fs/isofs/inode.c	2005-04-05 12:09:57.000000000 -0700
++++ linuxmips-2.4.30/fs/isofs/inode.c	2007-03-01 12:11:22.000000000 -0800
+@@ -641,6 +641,7 @@
+ 	  }
+ 
+ 	s->s_magic = ISOFS_SUPER_MAGIC;
++	s->s_maxbytes = 0xFFFFFFFF;
+ 
+ 	/* The CDROM is read-only, has no nodes (devices) on it, and since
+ 	   all of the files appear to be owned by root, we really do not want
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1034.isofs.patch linuxmips-2.4.30/README.1034.isofs.patch
+--- linuxmips-2.4.30.ref/README.1034.isofs.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1034.isofs.patch	2007-03-01 12:12:07.000000000 -0800
+@@ -0,0 +1,18 @@
++Feature:
++--------
++Fixed the problem with >2GB file.
++
++Prerequisite patch numbers:
++---------------------------
++none
++
++Primary author:
++---------------
++Craig Qu
++
++Related to which chip version SMP86xx xx=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

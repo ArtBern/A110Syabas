@@ -1,0 +1,3735 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/setup.c linuxmips-2.4.30/arch/mips/tango2/setup.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/setup.c	2007-05-08 10:41:10.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/tango2/setup.c	2007-05-08 10:41:54.000000000 -0700
+@@ -34,6 +34,8 @@
+ #include <asm/tango2/tango2.h>
+ #include <asm/tango2/rmdefs.h>
+ 
++extern int em86xx_sbox_init(void);
++ 
+ void tango2_restart(char *command)
+ {
+ 	unsigned long flags, tmp;
+@@ -213,5 +215,27 @@
+ 
+   	/* Initialize Switch box */
+   	em86xx_sbox_init();
++
++#ifdef CONFIG_TANGO2_HACK
++ 	/* This portion will be done in bootloader later */
++ 
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_default_timing, 0x10101010);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_CS_config, 0x00001044);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing0, 0x10101010);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_use_timing0, 0x000001f4);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing1, 0x00110101);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_use_timing1, 0x000003f3);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing2, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_use_timing2, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing3, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_use_timing3, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing4, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_use_timing4, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing5, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_use_timing5, 0);
++                                                                                 
++ 	// use GPIO#8, IRQ 14 for PCI IRQ, ISA IDE uses GPIO#6.
++ 	gbus_write_uint32(pGBus, REG_BASE_system_block + SYS_gpio_int, 0x0607080d);
++#endif
+ }
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/cdrom/cdrom.c linuxmips-2.4.30/drivers/cdrom/cdrom.c
+--- linuxmips-2.4.30.ref/drivers/cdrom/cdrom.c	2004-11-29 09:47:16.000000000 -0800
++++ linuxmips-2.4.30/drivers/cdrom/cdrom.c	2007-05-08 10:41:54.000000000 -0700
+@@ -268,6 +268,7 @@
+ #include <asm/fcntl.h>
+ #include <asm/segment.h>
+ #include <asm/uaccess.h>
++#include <asm/io.h>
+ 
+ /* used to tell the module to turn on full debugging messages */
+ static int debug;
+@@ -285,6 +286,10 @@
+ MODULE_PARM(lockdoor, "i");
+ MODULE_PARM(check_media_type, "i");
+ 
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++extern int is_contiguous_memory(unsigned long address, unsigned int len, unsigned long *physaddr);
++#endif
++
+ #if (ERRLOGMASK!=CD_NOTHING)
+ #define cdinfo(type, fmt, args...) \
+         if ((ERRLOGMASK & type) || debug==1 ) \
+@@ -436,6 +441,34 @@
+ 	return 0;
+ }
+ 
++int cdrom_get_media_event(struct cdrom_device_info *cdi,
++                          struct media_event_desc *med)
++{
++	struct cdrom_generic_command cgc;
++        unsigned char buffer[8];
++        struct event_header *eh = (struct event_header *) buffer;
++
++        init_cdrom_command(&cgc, buffer, sizeof(buffer), CGC_DATA_READ);
++        cgc.cmd[0] = GPCMD_GET_EVENT_STATUS_NOTIFICATION;
++        cgc.cmd[1] = 1;         /* IMMED */
++        cgc.cmd[4] = 1 << 4;    /* media event */
++        cgc.cmd[8] = sizeof(buffer);
++        cgc.quiet = 1;
++
++        if (cdi->ops->generic_packet(cdi, &cgc))
++                return 1;
++
++        if (be16_to_cpu(eh->data_len) < sizeof(*med))
++                return 1;
++
++        if (eh->nea || eh->notification_class != 0x4)
++                return 1;
++
++        memcpy(med, &buffer[sizeof(*eh)], sizeof(*med));
++        return 0;
++}
++
++
+ struct cdrom_device_info *cdrom_find_device(kdev_t dev)
+ {
+ 	struct cdrom_device_info *cdi;
+@@ -553,6 +586,8 @@
+ 		}
+ 		else {
+ 		    cdinfo(CD_OPEN, "wrong media type, but CDO_CHECK_TYPE not set.\n");
++		    ret=-EMEDIUMTYPE;
++		    goto clean_up_and_return;
+ 		}
+ 	}
+ 
+@@ -871,10 +906,12 @@
+ 	tracks->xa=0;
+ 	tracks->error=0;
+ 	cdinfo(CD_COUNT_TRACKS, "entering cdrom_count_tracks\n"); 
++#if 0
+         if (!CDROM_CAN(CDC_PLAY_AUDIO)) { 
+                 tracks->error=CDS_NO_INFO;
+                 return;
+         }        
++#endif
+ 	/* Grab the TOC header so we can see how many tracks there are */
+ 	if ((ret = cdi->ops->audio_ioctl(cdi, CDROMREADTOCHDR, &header))) {
+ 		if (ret == -ENOMEDIUM)
+@@ -1875,51 +1912,246 @@
+ 	struct request_sense *usense, sense;
+ 	unsigned char *ubuf;
+ 	int ret;
++	void *alloc_ptr = NULL; /* Not NULL: direct buffer not used */
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++	u32 paddr;
++	int try_ddma = 0;
++#endif
+ 
+ 	if (cgc->data_direction == CGC_DATA_UNKNOWN)
+ 		return -EINVAL;
+ 
+-	if (cgc->buflen < 0 || cgc->buflen >= 131072)
+-		return -EINVAL;
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++	try_ddma = (((
++			cgc->cmd[0] == GPCMD_READ_10 || cgc->cmd[0] == GPCMD_READ_CD ||
++			cgc->cmd[0] == GPCMD_WRITE_10 || cgc->cmd[0] == GPCMD_WRITE_AND_VERIFY_10 ||
++			cgc->cmd[0] == GPCMD_VERIFY_10
++		) /* READ_10 , READ_CD, WRITE_10, VERIFY_10, or WRITE_AND_VERIFY_10 */
++		&& (cgc->buffer != NULL) /* user specified buffer existed */ 
++		&& ((((u32)cgc->buffer) & (PAGE_SIZE - 1)) == 0) /* buffer aligned by page */
++		&& ((cgc->buflen & (PAGE_SIZE - 1)) == 0)  /* size aligned by page */
++		&& (cgc->buflen >= 131072) /* size >= 128KB */ ) ? 1 : 0);
++#endif
++
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++	if (try_ddma == 0) { /* not DDMA, check the size for allocation */
++#endif
++#ifndef MAX_KMALLOC_ORDER
++		if (cgc->buflen < 0 || cgc->buflen >= 131072) 
++			return -EINVAL;
++#else
++		if (cgc->buflen < 0 || cgc->buflen >= (PAGE_SIZE<<MAX_KMALLOC_ORDER)) 
++			return -EINVAL;
++#endif
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++	}
++#endif
+ 
+ 	usense = cgc->sense;
+ 	cgc->sense = &sense;
+-	if (usense && !access_ok(VERIFY_WRITE, usense, sizeof(*usense))) {
++	if (usense && !access_ok(VERIFY_WRITE, usense, sizeof(*usense))) 
+ 		return -EFAULT;
+-	}
+ 
+ 	ubuf = cgc->buffer;
+-	if (cgc->data_direction == CGC_DATA_READ ||
+-	    cgc->data_direction == CGC_DATA_WRITE) {
+-		cgc->buffer = kmalloc(cgc->buflen, GFP_KERNEL);
+-		if (cgc->buffer == NULL)
+-			return -ENOMEM;
+-	}
+-
++	cgc->reserved[0] = NULL;
+ 
+-	if (cgc->data_direction == CGC_DATA_READ) {
+-		if (!access_ok(VERIFY_READ, ubuf, cgc->buflen)) {
+-			kfree(cgc->buffer);
++	if (cgc->data_direction == CGC_DATA_READ) { 
++		/* first check for access */
++		if (!access_ok(VERIFY_WRITE, ubuf, cgc->buflen)) 
+ 			return -EFAULT;
++
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++		if (try_ddma != 0) { /* try to see if we can do DDMA */
++			if (is_contiguous_memory((u32)ubuf, cgc->buflen, &paddr)) { /* physically contiguous? yes */
++				u32 i, sz;
++				for (i = 0, sz = cgc->buflen; (i < 12) && ((sz & 1) == 0); i++, sz >>= 1)
++					; 
++				if (sz < 8192) { /* can be done with direct DMA */
++//					printk("Kernel memory = Vaddr(0x%08lx) Paddr(0x%08lx-0x%08lx)\n", (u32)ubuf, paddr, paddr + cgc->buflen);
++					dma_cache_inv((u32)ubuf, cgc->buflen); /* Invalidate the cache */
++					cgc->reserved[0] = (void *)paddr; /* use physical */
++				}
++			}
++		} 
++#endif /* CONFIG_SD_CDROM_DIRECT_DMA */
++
++		if (cgc->reserved[0] == NULL) { /* direct DMA not possible */
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++			if (try_ddma != 0) {
++#ifndef MAX_KMALLOC_ORDER
++				return -EINVAL; /* should not happen here */
++#else
++				if (cgc->buflen >= (PAGE_SIZE<<MAX_KMALLOC_ORDER)) 
++					return -EINVAL;
++#endif
++			}
++#endif
++			alloc_ptr = cgc->buffer = kmalloc(cgc->buflen, GFP_KERNEL);
++			if (cgc->buffer == NULL) 
++				return -ENOMEM;
+ 		}
+ 	} else if (cgc->data_direction == CGC_DATA_WRITE) {
+-		if (copy_from_user(cgc->buffer, ubuf, cgc->buflen)) {
+-			kfree(cgc->buffer);
++		if (!access_ok(VERIFY_READ, ubuf, cgc->buflen)) 
+ 			return -EFAULT;
++
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++		if (try_ddma != 0) { /* try to see if we can do DDMA */
++			if (is_contiguous_memory((u32)ubuf, cgc->buflen, &paddr)) { /* physically contiguous? yes */
++				u32 i, sz;
++				for (i = 0, sz = cgc->buflen; (i < 12) && ((sz & 1) == 0); i++, sz >>= 1)
++					; 
++				if (sz < 8192) { /* can be done with direct DMA */
++//					printk("Kernel memory = Vaddr(0x%08lx) Paddr(0x%08lx-0x%08lx)\n", (u32)ubuf, paddr, paddr + cgc->buflen);
++					dma_cache_wback_inv((u32)ubuf, cgc->buflen); /* WB and Invalidate the cache */
++					cgc->reserved[0] = (void *)paddr; /* use physical */
++				}
++			}
++		}
++#endif /* CONFIG_SD_CDROM_DIRECT_DMA */
++
++		if (cgc->reserved[0] == NULL) { /* direct DMA not possible */
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++			if (try_ddma != 0) {
++#ifndef MAX_KMALLOC_ORDER
++				return -EINVAL; /* should not happen here */
++#else
++				if (cgc->buflen >= (PAGE_SIZE<<MAX_KMALLOC_ORDER)) 
++					return -EINVAL;
++#endif
++			}
++#endif
++			alloc_ptr = cgc->buffer = kmalloc(cgc->buflen, GFP_KERNEL);
++			if (cgc->buffer == NULL) 
++				return -ENOMEM;
++		}
++
++		if (alloc_ptr != NULL) {
++			if (copy_from_user(cgc->buffer, ubuf, cgc->buflen)) {
++				kfree(cgc->buffer);
++				return -EFAULT;
++			}
+ 		}
+ 	}
+ 
+ 	ret = cdi->ops->generic_packet(cdi, cgc);
+ 	__copy_to_user(usense, cgc->sense, sizeof(*usense));
+-	if (!ret && cgc->data_direction == CGC_DATA_READ)
+-		__copy_to_user(ubuf, cgc->buffer, cgc->buflen);
+-	if (cgc->data_direction == CGC_DATA_READ ||
+-	    cgc->data_direction == CGC_DATA_WRITE) {
+-		kfree(cgc->buffer);
++
++	if (!ret && cgc->data_direction == CGC_DATA_READ) {
++		if (alloc_ptr != NULL) 
++			__copy_to_user(ubuf, cgc->buffer, cgc->buflen);
++	}
++
++	if (alloc_ptr != NULL)
++		kfree(alloc_ptr);
++
++	return ret;
++}
++
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++
++/*
++ * CDROM audio read, with DMA support.  Added in 2.4.18-pre4, akpm.
++ *
++ * Initially, we try to perform multiframe bus-mastering.  If the IDE
++ * layer experiences a DMA error, we fall back to single-frame DMA.
++ * If the IDE layer again detects a DMA error, we fall back to multiframe
++ * PIO.
++ *
++ * We do not want to disable drive-level DMA at any stage, because
++ * some devices can perform non-packet DMA quite happily, but appear
++ * to not be able to perform packet DMA correctly.
++ *
++ * If the drive is not using_dma, we never attempt packet DMA.
++ */
++static int cdda_read_audio(int cmd,
++			struct cdrom_device_info *cdi,
++			struct cdrom_generic_command *cgc,
++			struct cdrom_read_audio *ra)
++{
++	int lba;
++	unsigned frames_todo;
++	int ret;
++	void *xferbuf = 0;
++	unsigned nr_local_frames;
++	char *useraddr;
++
++	ret = -EINVAL;
++	if (ra->addr_format == CDROM_MSF) {
++		lba = msf_to_lba(ra->addr.msf.minute,
++				 ra->addr.msf.second,
++				 ra->addr.msf.frame);
++	} else if (ra->addr_format == CDROM_LBA) {
++		lba = ra->addr.lba;
++	} else {
++		goto out;
+ 	}
++
++	if (lba < 0 || ra->nframes <= 0)
++		goto out;
++
++	/*
++	 * We can't sensibly support more that 64k because we later
++	 * use a buffer_head to map the temp buffer.  And b_count is
++	 * unisgned short.
++	 */
++	nr_local_frames = ra->nframes;
++	if (nr_local_frames * CD_FRAMESIZE_RAW > 32768)
++		nr_local_frames = 32768 / CD_FRAMESIZE_RAW;
++
++	if (cdi->dma_mode == CDROM_DMA_SINGLE)
++		nr_local_frames = 1;
++
++	do {
++		xferbuf = kmalloc(CD_FRAMESIZE_RAW * nr_local_frames, GFP_KERNEL);
++	} while (!xferbuf && nr_local_frames--);
++	ret = -ENOMEM;
++	if (!xferbuf)
++		goto out;
++
++	cgc->buffer = xferbuf;
++	cgc->data_direction = CGC_DATA_READ;
++	if (cdi->dma_mode != CDROM_DMA_NONE)
++		cgc->do_dma = 1;
++	frames_todo = ra->nframes;
++	useraddr = ra->buf;
++retry:
++	while (frames_todo) {
++		unsigned frames_now = min(frames_todo, nr_local_frames);
++
++		cgc->dma_error = 0;
++		ret = cdrom_read_block(cdi, cgc, lba, frames_now, 1, CD_FRAMESIZE_RAW);
++		if (ret) {
++			/*
++			 * Here we implement DMA size fallback
++			 */
++			if (cgc->dma_error && cdi->dma_mode == CDROM_DMA_MULTI) {
++				printk(KERN_WARNING "CDROM: falling back to "
++					"single frame DMA\n");
++				cdi->dma_mode = CDROM_DMA_SINGLE;
++				nr_local_frames = 1;
++				goto retry;
++			} else if (cgc->dma_error && cdi->dma_mode == CDROM_DMA_SINGLE) {
++				printk(KERN_WARNING "CDROM: disabled DMA\n");
++				cdi->dma_mode = CDROM_DMA_NONE;
++				goto retry;
++			}
++			goto out;
++		}
++		ret = -EFAULT;
++		if (copy_to_user(useraddr, cgc->buffer, CD_FRAMESIZE_RAW * frames_now))
++			goto out;
++		useraddr += CD_FRAMESIZE_RAW * frames_now;
++		frames_todo -= frames_now;
++		lba += frames_now;
++	}
++	ret = 0;
++out:
++	kfree(xferbuf);
+ 	return ret;
+ }
+ 
++#endif
++
+ static int mmc_ioctl(struct cdrom_device_info *cdi, unsigned int cmd,
+ 		     unsigned long arg)
+ {		
+@@ -1986,6 +2218,11 @@
+ 		}
+ 	case CDROMREADAUDIO: {
+ 		struct cdrom_read_audio ra;
++
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++		IOCTL_IN(arg, struct cdrom_read_audio, ra);
++		return cdda_read_audio(cmd, cdi, &cgc, &ra);
++#else
+ 		int lba, nr;
+ 
+ 		IOCTL_IN(arg, struct cdrom_read_audio, ra);
+@@ -2037,6 +2274,7 @@
+ 		}
+ 		kfree(cgc.buffer);
+ 		return ret;
++#endif
+ 		}
+ 	case CDROMSUBCHNL: {
+ 		struct cdrom_subchnl q;
+@@ -2392,6 +2630,7 @@
+ EXPORT_SYMBOL(cdrom_mode_sense);
+ EXPORT_SYMBOL(init_cdrom_command);
+ EXPORT_SYMBOL(cdrom_find_device);
++EXPORT_SYMBOL(cdrom_get_media_event);
+ 
+ #ifdef CONFIG_SYSCTL
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/Config.in linuxmips-2.4.30/drivers/ide/Config.in
+--- linuxmips-2.4.30.ref/drivers/ide/Config.in	2004-11-18 16:28:37.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/Config.in	2007-05-08 10:41:54.000000000 -0700
+@@ -159,6 +159,8 @@
+ 
+ if [ "$CONFIG_IDEDMA_PCI_AUTO" = "y" -o \
+      "$CONFIG_BLK_DEV_IDEDMA_PMAC_AUTO" = "y" -o \
++     "$CONFIG_BLK_DEV_TANGO2_ISAIDEDMA" = "y" -o \
++     "$CONFIG_BLK_DEV_TANGO2_BMIDEDMA" = "y" -o \
+      "$CONFIG_IDEDMA_ICS_AUTO" = "y" ]; then
+    define_bool CONFIG_IDEDMA_AUTO y
+ else
+@@ -190,6 +192,45 @@
+ ##  dep_mbool CONFIG_BLK_DEV_NTF_DISK $CONFIG_BLK_DEV_IDEDISK
+ ##fi
+ 
++if [ "$CONFIG_TANGO2" = "y" ]; then
++if [ "$CONFIG_BLK_DEV_IDE" != "n" ]; then
++    dep_tristate '  EM86xx ISA IDE controller' CONFIG_BLK_DEV_TANGO2_ISAIDE $CONFIG_BLK_DEV_IDE
++    if [ "$CONFIG_BLK_DEV_TANGO2_ISAIDE" != "n" ]; then
++        bool '    IDE Multiword DMA support' CONFIG_BLK_DEV_TANGO2_ISAIDEDMA
++        bool '    Automatic peripheral bus timing setting' CONFIG_BLK_DEV_TANGO2_ISAIDETIMING
++    fi
++
++    dep_tristate '  EM86xx Bus Master IDE controller' CONFIG_BLK_DEV_TANGO2_BMIDE $CONFIG_BLK_DEV_IDE
++    if [ "$CONFIG_BLK_DEV_TANGO2_BMIDE" != "n" ]; then
++        bool '    IDE DMA support' CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++        if [ "$CONFIG_BLK_DEV_TANGO2_BMIDEDMA" = "y" ]; then
++            bool '    IDE UDMA support' CONFIG_BLK_DEV_TANGO2_BMIDEUDMA
++        fi
++    fi
++
++    if [ "$CONFIG_BLK_DEV_TANGO2_BMIDE" != "n" -o "$CONFIG_BLK_DEV_TANGO2_ISAIDE" != "n" ]; then
++	define_bool CONFIG_SD_IDE_FASTPROBE y
++	if [ "$CONFIG_BLK_DEV_IDECD" = "y" ]; then
++	    bool '  Enable CDROM wait for spin-up'    CONFIG_SD_CDROM_WAIT
++	    if [ "$CONFIG_SD_CDROM_WAIT" = "y" ]; then
++	       int '    CDROM spin-up wait time (in seconds)' CONFIG_SD_CDROM_WAIT_TIME 5
++	    fi
++	fi
++    fi
++
++    if [ "$CONFIG_BLK_DEV_TANGO2_ISAIDEDMA" = "y" -o "$CONFIG_BLK_DEV_TANGO2_BMIDEDMA" = "y" ]; then
++        define_bool CONFIG_BLK_DEV_IDEDMA y
++	if [ "$CONFIG_BLK_DEV_IDECD" = "y" ]; then
++           bool '  Use DMA for ATAPI packet command' CONFIG_SD_CDROM_DMAPACKET
++	   bool '  Keep DMA mode even I/O failed on non-HDD' CONFIG_SD_CDROM_KEEP_DMA
++	   bool '  Enable user level direct DMA operation'   CONFIG_SD_CDROM_DIRECT_DMA
++	fi
++    fi
++fi
++fi
++
++
++
+ dep_tristate 'Support for IDE Raid controllers (EXPERIMENTAL)' CONFIG_BLK_DEV_ATARAID $CONFIG_BLK_DEV_IDE $CONFIG_EXPERIMENTAL
+ dep_tristate '   Support Promise software RAID (Fasttrak(tm)) (EXPERIMENTAL)' CONFIG_BLK_DEV_ATARAID_PDC $CONFIG_BLK_DEV_IDE $CONFIG_EXPERIMENTAL $CONFIG_BLK_DEV_ATARAID
+ dep_tristate '   Highpoint 370 software RAID (EXPERIMENTAL)' CONFIG_BLK_DEV_ATARAID_HPT $CONFIG_BLK_DEV_IDE $CONFIG_EXPERIMENTAL $CONFIG_BLK_DEV_ATARAID
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/ide.c linuxmips-2.4.30/drivers/ide/ide.c
+--- linuxmips-2.4.30.ref/drivers/ide/ide.c	2004-08-14 11:38:49.000000000 -0700
++++ linuxmips-2.4.30/drivers/ide/ide.c	2007-05-08 10:41:54.000000000 -0700
+@@ -211,6 +211,7 @@
+ 
+ extern ide_driver_t idedefault_driver;
+ static void setup_driver_defaults (ide_drive_t *drive);
++static int num_hwifs;
+ 
+ /*
+  * Do not even *think* about calling this!
+@@ -305,6 +306,7 @@
+ 	/* Initialise all interface structures */
+ 	for (index = 0; index < MAX_HWIFS; ++index)
+ 		init_hwif_data(index);
++	num_hwifs = 0;
+ 
+ 	/* Add default hw interfaces */
+ 	ide_init_default_hwifs();
+@@ -1148,7 +1150,7 @@
+  */
+ int ide_register_hw (hw_regs_t *hw, ide_hwif_t **hwifp)
+ {
+-	int index, retry = 1;
++	int index, retry = 1, ret = -1;
+ 	ide_hwif_t *hwif;
+ 
+ 	do {
+@@ -1186,12 +1188,18 @@
+ 		create_proc_ide_interfaces();
+ #endif
+ 		ide_driver_module(1);
++#if defined(CONFIG_BLK_DEV_TANGO2_ISAIDE_MODULE) || defined(CONFIG_BLK_DEV_TANGO2_BMIDE_MODULE)
++                initializing = 1;
++#endif
+ 	}
+ 
+ 	if (hwifp)
+ 		*hwifp = hwif;
+ 
+-	return (initializing || hwif->present) ? index : -1;
++	ret = (initializing || hwif->present) ? index : -1;
++	if (ret >= 0)
++		num_hwifs++;
++	return(ret);
+ }
+ 
+ EXPORT_SYMBOL(ide_register_hw);
+@@ -1919,6 +1927,9 @@
+  */
+ 				return ide_revalidate_disk(inode->i_rdev);
+ 			}
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDE
++			HWIF(drive)->ide_dma_check(drive);
++#endif
+ 			return 0;
+ 		}
+ 		case BLKROSET:
+@@ -2566,6 +2577,18 @@
+ 		buddha_init();
+ 	}
+ #endif /* CONFIG_BLK_DEV_BUDDHA */
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDE
++	{
++		extern void em86xx_bmide_init(void);
++		em86xx_bmide_init();
++	}
++#endif
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDE
++	{
++		extern void em86xx_isaide_init(void);
++		em86xx_isaide_init();
++	}
++#endif
+ }
+ 
+ void __init ide_init_builtin_subdrivers (void)
+@@ -2631,13 +2654,15 @@
+ 	probe_for_hwifs ();
+ 
+ #ifdef CONFIG_BLK_DEV_IDE
+-	if (ide_hwifs[0].io_ports[IDE_DATA_OFFSET])
+-		ide_get_lock(NULL, NULL); /* for atari only */
++	if (num_hwifs > 0) {
++		if (ide_hwifs[0].io_ports[IDE_DATA_OFFSET])
++			ide_get_lock(NULL, NULL); /* for atari only */
+ 
+-	(void) ideprobe_init();
++		(void)ideprobe_init();
+ 
+-	if (ide_hwifs[0].io_ports[IDE_DATA_OFFSET])
+-		ide_release_lock();	/* for atari only */
++		if (ide_hwifs[0].io_ports[IDE_DATA_OFFSET])
++			ide_release_lock();	/* for atari only */
++	}
+ #endif /* CONFIG_BLK_DEV_IDE */
+ 
+ #ifdef CONFIG_PROC_FS
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/ide-cd.c linuxmips-2.4.30/drivers/ide/ide-cd.c
+--- linuxmips-2.4.30.ref/drivers/ide/ide-cd.c	2005-03-18 04:13:25.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/ide-cd.c	2007-05-08 10:43:55.000000000 -0700
+@@ -317,6 +317,11 @@
+ 
+ #include "ide-cd.h"
+ 
++#ifdef CONFIG_SD_CDROM_WAIT
++#define CONFIG_SD_CDROM_WAIT_TICKS     (CONFIG_SD_CDROM_WAIT_TIME * HZ)
++static unsigned long cdrom_wait = 0;
++#endif
++
+ /****************************************************************************
+  * Generic packet command support and error handling routines.
+  */
+@@ -447,21 +452,15 @@
+ 
+ 		if (failed_command != NULL) {
+ 
+-			int lo=0, mid, hi= ARY_LEN (packet_command_texts);
++			int lo, hi= ARY_LEN (packet_command_texts);
+ 			s = NULL;
+ 
+-			while (hi > lo) {
+-				mid = (lo + hi) / 2;
+-				if (packet_command_texts[mid].packet_command ==
+-				    failed_command->c[0]) {
+-					s = packet_command_texts[mid].text;
+-					break;
+-				}
+-				if (packet_command_texts[mid].packet_command >
+-				    failed_command->c[0])
+-					hi = mid;
+-				else
+-					lo = mid+1;
++			for (lo = 0; lo < hi; lo ++) {
++				if (packet_command_texts[lo].packet_command ==
++                                    failed_command->c[0]) {
++                                        s = packet_command_texts[lo].text;
++                                        break;
++                                }
+ 			}
+ 
+ 			printk ("  The failed \"%s\" packet command was: \n  \"", s);
+@@ -688,6 +687,11 @@
+ 		uptodate = 1;
+ 
+ 	ide_cdrom_end_request(drive, uptodate);
++
++#ifdef CONFIG_SD_CDROM_WAIT
++	if (uptodate)
++		cdrom_wait = 0;
++#endif
+ }
+ 
+ 
+@@ -785,12 +789,31 @@
+ 			   too many times. */
+ 			if (++rq->errors > ERROR_MAX)
+ 				do_end_request = 1;
+-		} else if (sense_key == ILLEGAL_REQUEST ||
+-			   sense_key == DATA_PROTECT) {
++		} else if (sense_key == DATA_PROTECT) {
++			/* No point in retrying after an illegal
++			   request or data protect error.*/
++			ide_dump_status (drive, "command error", stat);
++			do_end_request = 1;
++		} else if (sense_key == ILLEGAL_REQUEST) {
++#ifdef CONFIG_SD_CDROM_WAIT
++			if (cdrom_wait == 0)
++				cdrom_wait = jiffies;
++			if (time_after(cdrom_wait + CONFIG_SD_CDROM_WAIT_TICKS, jiffies)) {
++				printk("%s: retrying operation.\n", drive->name);
++				do_end_request = 0;
++			} else {
++				/* No point in retrying after an illegal
++		 		  request or data protect error.*/
++				cdrom_wait = 0;
++				ide_dump_status (drive, "command error", stat);
++				do_end_request = 1;
++			}
++#else
+ 			/* No point in retrying after an illegal
+ 			   request or data protect error.*/
+ 			ide_dump_status (drive, "command error", stat);
+ 			do_end_request = 1;
++#endif
+ 		} else if (sense_key == MEDIUM_ERROR) {
+ 			/* No point in re-trying a zillion times on a bad 
+ 			 * sector...  If we got here the error is not correctable */
+@@ -1432,7 +1455,21 @@
+ 	if (cdrom_read_from_buffer(drive))
+ 		return ide_stopped;
+ 
+-	cdrom_attempt_remerge(drive, rq);
++#if !defined(CONFIG_BLK_DEV_TANGO2_ISAIDEDMA) && !defined(CONFIG_BLK_DEV_TANGO2_BMIDEDMA)
++	// by Ho Lee 2003/09/18
++	// TANGO2 IDE DMA has maximum sector limition (refer to ide-probe.c)
++	// block I/O interface build request queue based on the max_sector[],
++	// but cdrom_attempt_remerge may merge the request and build the 
++	// bigger request queue (up to 256 sectors), which is not adequate
++	// to TANGO2 IDE DMA
++	// by Ho Lee 2004/04/13
++	// Since the driver makes use of MBUS interrupt to split the transfer,
++	// merging does not make a problem.
++//	cdrom_attempt_remerge(drive, rq);
++#else
++// 	Don't do the remerge
++//	cdrom_attempt_remerge(drive, rq);
++#endif
+ 
+ 	/* Clear the local sector buffer. */
+ 	info->nsectors_buffered = 0;
+@@ -1466,6 +1503,26 @@
+ 	ide_startstop_t startstop;
+ 	u8 lowcyl = 0, highcyl = 0;
+ 
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++	struct cdrom_info *info = drive->driver_data;
++	int dma = info->dma;
++	int dma_error;
++
++ 	/* Check for errors. */
++	if (dma) {
++		info->dma = 0;
++		if ((dma_error = HWIF(drive)->ide_dma_end(drive))) {
++			/*
++			 * We don't disable drive DMA for packet DMA errors.
++			 * It's handled in cdda_read_audio()
++			 */
++			/* HWIF(drive)->dmaproc(ide_dma_off, drive); */
++			pc->stat = 2;	/* 2 -> DMA error */
++			printk(KERN_ERR "CDROM packet DMA error\n");
++		}
++	}
++#endif
++
+ 	/* Check for errors. */
+ 	if (cdrom_decode_status(&startstop, drive, 0, &stat))
+ 		return startstop;
+@@ -1477,6 +1534,16 @@
+ 
+ 	len = lowcyl + (256 * highcyl);
+ 
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++	if (dma) {
++		/*
++		 * If DMA succeeded, we have all the data
++		 */
++		pc->buffer += pc->buflen;
++		pc->buflen = 0;
++	}
++#endif
++
+ 	/* If DRQ is clear, the command has completed.
+ 	   Complain if we still have data left to transfer. */
+ 	if ((stat & DRQ_STAT) == 0) {
+@@ -1501,7 +1568,11 @@
+ 			printk ("%s: cdrom_pc_intr: data underrun %d\n",
+ 				drive->name, pc->buflen);
+ 			*/
+-			pc->stat = 1;
++			// XXX sigma - let's make it ok to send more memory
++			// than requested if we are just reading the TOC
++			if (pc->c[0] != 0x43)
++				pc->stat = 1;
++                                                                                
+ 			cdrom_end_request(drive, 1);
+ 		}
+ 		return ide_stopped;
+@@ -1551,6 +1622,8 @@
+ 			"appears confused (ireason = 0x%2x)\n",
+ 			drive->name, ireason);
+ 		pc->stat = 1;
++                cdrom_end_request (drive, 1);
++                return ide_stopped;
+ 	}
+ 
+ 	/* Now we wait for another interrupt. */
+@@ -1579,7 +1652,15 @@
+ 	struct packet_command *pc = (struct packet_command *)rq->buffer;
+ 	struct cdrom_info *info = drive->driver_data;
+ 
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++	if (rq->bh) {
++		info->dma = 1;
++	} else {
++		info->dma = 0;
++	}
++#else
+ 	info->dma = 0;
++#endif
+ 	info->cmd = 0;
+ 	pc->stat = 0;
+ 	len = pc->buflen;
+@@ -1602,19 +1683,49 @@
+ 	} while (sleep);
+ }
+ 
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++/*
++ * end_buffer_io_sync() is not exported
++ */
++static void cdrom_end_buffer_io_sync(struct buffer_head *bh, int uptodate)
++{
++}
++#endif
++
+ static
+-int cdrom_queue_packet_command(ide_drive_t *drive, struct packet_command *pc)
++int cdrom_queue_packet_command(ide_drive_t *drive, struct packet_command *pc, u32 paddr)
+ {
+ 	struct request_sense sense;
+ 	struct request req;
+ 	int retries = 10;
+ 
+-	if (pc->sense == NULL)
++	if (pc->sense == NULL) {
++		memset(&sense, 0, sizeof(struct request_sense));
+ 		pc->sense = &sense;
++	}
+ 
+ 	/* Start of retry loop. */
+ 	do {
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++		struct buffer_head bh;
++#endif
+ 		ide_init_drive_cmd (&req);
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++		if (pc->do_dma) {
++			/* Hack up a buffer_head for IDE DMA's use */
++			memset(&bh, 0, sizeof(bh));
++			bh.b_size = pc->buflen;
++			bh.b_data = paddr ? (void *)paddr : pc->buffer;
++			bh.b_state = (1 << BH_Lock) | (1 << BH_Mapped) |
++					(1 << BH_Req);
++			bh.b_end_io = cdrom_end_buffer_io_sync;
++#if 0		/* Needed by end_buffer_io_sync, but not cdrom_end_buffer_io_sync */
++			atomic_set(&bh.b_count, 1);
++			init_waitqueue_head(&bh.b_wait);
++#endif
++			req.bh = &bh;
++		}
++#endif
+ 		req.cmd = PACKET_COMMAND;
+ 		req.buffer = (char *)pc;
+ 		ide_do_drive_cmd(drive, &req, ide_wait);
+@@ -1971,7 +2082,7 @@
+         pc.c[7] = cdi->sanyo_slot % 3;
+ #endif /* not STANDARD_ATAPI */
+ 
+-	return cdrom_queue_packet_command(drive, &pc);
++	return cdrom_queue_packet_command(drive, &pc, 0);
+ }
+ 
+ 
+@@ -1994,7 +2105,7 @@
+ 		pc.sense = sense;
+ 		pc.c[0] = GPCMD_PREVENT_ALLOW_MEDIUM_REMOVAL;
+ 		pc.c[4] = lockflag ? 1 : 0;
+-		stat = cdrom_queue_packet_command(drive, &pc);
++		stat = cdrom_queue_packet_command(drive, &pc, 0);
+ 	}
+ 
+ 	/* If we got an illegal field error, the drive
+@@ -2035,10 +2146,11 @@
+ 
+ 	memset(&pc, 0, sizeof (pc));
+ 	pc.sense = sense;
++	pc.timeout = 5 * WAIT_CMD;
+ 
+ 	pc.c[0] = GPCMD_START_STOP_UNIT;
+ 	pc.c[4] = 0x02 + (ejectflag != 0);
+-	return cdrom_queue_packet_command(drive, &pc);
++	return cdrom_queue_packet_command(drive, &pc, 0);
+ }
+ 
+ static int cdrom_read_capacity(ide_drive_t *drive, unsigned long *capacity,
+@@ -2059,7 +2171,7 @@
+ 	pc.buffer = (char *)&capbuf;
+ 	pc.buflen = sizeof(capbuf);
+ 
+-	stat = cdrom_queue_packet_command(drive, &pc);
++	stat = cdrom_queue_packet_command(drive, &pc, 0);
+ 	if (stat == 0)
+ 		*capacity = 1 + be32_to_cpu(capbuf.lba);
+ 
+@@ -2087,7 +2199,7 @@
+ 	if (msf_flag)
+ 		pc.c[1] = 2;
+ 
+-	return cdrom_queue_packet_command(drive, &pc);
++	return cdrom_queue_packet_command(drive, &pc, 0);
+ }
+ 
+ 
+@@ -2102,6 +2214,7 @@
+ 		struct atapi_toc_header hdr;
+ 		struct atapi_toc_entry  ent;
+ 	} ms_tmp;
++	unsigned long lastwritten;
+ 
+ 	if (toc == NULL) {
+ 		/* Try to allocate space. */
+@@ -2236,11 +2349,29 @@
+ 	/* Now try to get the total cdrom capacity. */
+ 	minor = (drive->select.b.unit) << PARTN_BITS;
+ 	dev = MKDEV(HWIF(drive)->major, minor);
++
++#if 1	/* inspired by kernel 2.6.20 */
++	/* 
++		This way toc->capacity is not initialized by cdrom_get_last_written(),
++		and we can choose the greater of the two values
++	*/
++	stat = cdrom_get_last_written(dev, &lastwritten);
++	if(stat)
++		lastwritten = 0;
++	
++	stat = cdrom_read_capacity(drive, &toc->capacity, sense);
++	if (stat)
++		toc->capacity = 0x1fffff;
++	
++	if(lastwritten > toc->capacity)
++		toc->capacity = lastwritten;
++#else /* original code */	
+ 	stat = cdrom_get_last_written(dev, &toc->capacity);
+ 	if (stat || !toc->capacity)
+ 		stat = cdrom_read_capacity(drive, &toc->capacity, sense);
+ 	if (stat)
+ 		toc->capacity = 0x1fffff;
++#endif
+ 
+ 	HWIF(drive)->gd->sizes[drive->select.b.unit << PARTN_BITS] = (toc->capacity * SECTORS_PER_FRAME) >> (BLOCK_SIZE_BITS - 9);
+ 	drive->part[0].nr_sects = toc->capacity * SECTORS_PER_FRAME;
+@@ -2268,7 +2399,7 @@
+ 	pc.c[3] = format;
+ 	pc.c[7] = (buflen >> 8);
+ 	pc.c[8] = (buflen & 0xff);
+-	return cdrom_queue_packet_command(drive, &pc);
++	return cdrom_queue_packet_command(drive, &pc, 0);
+ }
+ 
+ /* ATAPI cdrom drives are free to select the speed you request or any slower
+@@ -2299,7 +2430,7 @@
+ 		pc.c[5] = speed & 0xff;
+        }
+ 
+-	return cdrom_queue_packet_command(drive, &pc);
++	return cdrom_queue_packet_command(drive, &pc, 0);
+ }
+ 
+ static int cdrom_play_audio(ide_drive_t *drive, int lba_start, int lba_end)
+@@ -2314,7 +2445,7 @@
+ 	lba_to_msf(lba_start, &pc.c[3], &pc.c[4], &pc.c[5]);
+ 	lba_to_msf(lba_end-1, &pc.c[6], &pc.c[7], &pc.c[8]);
+ 
+-	return cdrom_queue_packet_command(drive, &pc);
++	return cdrom_queue_packet_command(drive, &pc, 0);
+ }
+ 
+ static int cdrom_get_toc_entry(ide_drive_t *drive, int track,
+@@ -2366,7 +2497,20 @@
+ 	pc.quiet = cgc->quiet;
+ 	pc.timeout = cgc->timeout;
+ 	pc.sense = cgc->sense;
+-	return cgc->stat = cdrom_queue_packet_command(drive, &pc);
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++	if (cgc->do_dma && drive->using_dma)
++		pc.do_dma = 1;
++	if (pc.c[0] != GPCMD_READ_10 && pc.c[0] != GPCMD_READ_CD &&
++			pc.c[0] != GPCMD_WRITE_10 && pc.c[0] != GPCMD_VERIFY_10 &&
++			pc.c[0] != GPCMD_WRITE_AND_VERIFY_10)
++		pc.do_dma = 0;
++	cgc->stat = cdrom_queue_packet_command(drive, &pc, (u32)cgc->reserved[0]);
++	if (pc.stat == 2)	/* DMA error: fall back to lower mode */
++		cgc->dma_error = 1;
++	return cgc->stat;
++#else
++	return cgc->stat = cdrom_queue_packet_command(drive, &pc, 0);
++#endif
+ }
+ 
+ static
+@@ -2554,34 +2698,48 @@
+ static
+ int ide_cdrom_drive_status (struct cdrom_device_info *cdi, int slot_nr)
+ {
+-	ide_drive_t *drive = (ide_drive_t*) cdi->handle;
++        ide_drive_t *drive = (ide_drive_t*) cdi->handle;
++        struct media_event_desc med;
++        struct request_sense sense;
++        int stat;
+ 
+-	if (slot_nr == CDSL_CURRENT) {
+-		struct request_sense sense;
+-		int stat = cdrom_check_status(drive, &sense);
+-		if (stat == 0 || sense.sense_key == UNIT_ATTENTION)
+-			return CDS_DISC_OK;
+-
+-		if (sense.sense_key == NOT_READY && sense.asc == 0x04 &&
+-		    sense.ascq == 0x04)
+-			return CDS_DISC_OK;
+ 
+ 
+-		/*
+-		 * If not using Mt Fuji extended media tray reports,
+-		 * just return TRAY_OPEN since ATAPI doesn't provide
+-		 * any other way to detect this...
+-		 */
+-		if (sense.sense_key == NOT_READY) {
+-			if (sense.asc == 0x3a && sense.ascq == 1)
+-				return CDS_NO_DISC;
+-			else
+-				return CDS_TRAY_OPEN;
+-		}
++        if (slot_nr != CDSL_CURRENT)
++                return -EINVAL;
++
++        stat = cdrom_check_status(drive, &sense);
++        if (!stat || sense.sense_key == UNIT_ATTENTION)
++                return CDS_DISC_OK;
++
++        if (!cdrom_get_media_event(cdi, &med)) {
++                if (med.media_present)
++                        return CDS_DISC_OK;
++                else if (med.door_open)
++                        return CDS_TRAY_OPEN;
++                else
++                        return CDS_NO_DISC;
++        }
++
++        if (sense.sense_key == NOT_READY && sense.asc == 0x04 && sense.ascq == 0x04)
++                return CDS_DISC_OK;
++
++        /*
++         * If not using Mt Fuji extended media tray reports,
++         * just return TRAY_OPEN since ATAPI doesn't provide
++         * any other way to detect this...
++         */
++        if (sense.sense_key == NOT_READY) {
++                if (sense.asc == 0x3a) {
++                        if (sense.ascq == 1)
++                                return CDS_NO_DISC;
++                        else if (sense.ascq == 0 || sense.ascq == 2)
++                                return CDS_TRAY_OPEN;
++                }
++        }
++
++        return CDS_DRIVE_NOT_READY;
+ 
+-		return CDS_DRIVE_NOT_READY;
+-	}
+-	return -EINVAL;
+ }
+ 
+ static
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/ide-cd.h linuxmips-2.4.30/drivers/ide/ide-cd.h
+--- linuxmips-2.4.30.ref/drivers/ide/ide-cd.h	2003-02-25 14:03:06.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/ide-cd.h	2007-05-08 10:41:54.000000000 -0700
+@@ -111,6 +111,9 @@
+ 	int quiet;
+ 	int timeout;
+ 	struct request_sense *sense;
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++	int do_dma;
++#endif
+ 	unsigned char c[12];
+ };
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/ide-disk.c linuxmips-2.4.30/drivers/ide/ide-disk.c
+--- linuxmips-2.4.30.ref/drivers/ide/ide-disk.c	2004-08-14 11:38:49.000000000 -0700
++++ linuxmips-2.4.30/drivers/ide/ide-disk.c	2007-05-08 10:41:54.000000000 -0700
+@@ -1854,6 +1854,9 @@
+ 			DRIVER(drive)->busy--;
+ 			continue;
+ 		}
++#ifdef MODULE
++                idedisk_revalidate (drive);
++#endif
+ 		DRIVER(drive)->busy--;
+ 		failed--;
+ 	}
+@@ -1866,12 +1869,13 @@
+ 
+ ide_startstop_t panic_box(ide_drive_t *drive)
+ {
+-#if 0
++#if 1
+ 	panic("%s: Attempted to corrupt something: ide operation "
++		"was pending accross suspend/resume.\n", drive->name);
+ #else
+ 	printk(KERN_ERR "%s: Attempted to corrupt something: ide operation "
+-#endif
+ 		"was pending accross suspend/resume.\n", drive->name);
++#endif
+ 	return ide_stopped;
+ }
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/ide-iops.c linuxmips-2.4.30/drivers/ide/ide-iops.c
+--- linuxmips-2.4.30.ref/drivers/ide/ide-iops.c	2004-01-20 07:10:31.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/ide-iops.c	2007-05-08 10:41:54.000000000 -0700
+@@ -1217,6 +1217,10 @@
+ 		if (drive->current_speed >= XFER_SW_DMA_0)
+ 			(void) HWIF(drive)->ide_dma_on(drive);
+ 	} else {
++#ifdef CONFIG_SD_CDROM_KEEP_DMA
++		/* Turn off DMA only for HDD */
++		if (drive->media == ide_disk) 
++#endif
+ 		(void) HWIF(drive)->ide_dma_off(drive);
+ 	}
+ }
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/ide-lib.c linuxmips-2.4.30/drivers/ide/ide-lib.c
+--- linuxmips-2.4.30.ref/drivers/ide/ide-lib.c	2003-02-25 14:03:06.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/ide-lib.c	2007-05-08 10:41:54.000000000 -0700
+@@ -171,7 +171,7 @@
+ 		BUG();
+ 	return min(speed, speed_max[mode]);
+ #else /* !CONFIG_BLK_DEV_IDEDMA */
+-	return min(speed, XFER_PIO_4);
++	return min(speed, (u8)XFER_PIO_4);
+ #endif /* CONFIG_BLK_DEV_IDEDMA */
+ }
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/ide-probe.c linuxmips-2.4.30/drivers/ide/ide-probe.c
+--- linuxmips-2.4.30.ref/drivers/ide/ide-probe.c	2004-04-15 20:14:15.000000000 -0700
++++ linuxmips-2.4.30/drivers/ide/ide-probe.c	2007-05-08 10:41:54.000000000 -0700
+@@ -56,6 +56,43 @@
+ #include <asm/uaccess.h>
+ #include <asm/io.h>
+ 
++#if defined(CONFIG_SD_IDE_FASTPROBE) || defined(CONFIG_BLK_DEV_TANGO2_ISAIDENOIRQ)
++
++#define IDE_WAIT_TIMEOUT_SECS           12
++
++int ide_wait_stat_sd(struct hwif_s *hwif, int reg, int mask, int waitmask, int usetimeout)
++{
++        int status;
++        int timeout = jiffies + (IDE_WAIT_TIMEOUT_SECS * HZ);
++	static int first_done = 0;
++
++        for (;;) {
++                status = hwif->INB(reg);
++
++                /*
++                * Western Digital specific hack - when drive is erasing, there is a small window (~5ms)
++                * after spinup before it will report busy.  Account for that on the very first wait.
++                */
++                if(((status & mask) == waitmask) && !first_done){
++                        first_done = 1;
++                        udelay(50*1000);
++                        continue;
++                }
++
++                if ((status & mask) == waitmask)
++                        break;
++                if (usetimeout) {
++                        if (jiffies > timeout){
++                                return 1;
++                        }
++                }
++                udelay(50);
++        }
++        return 0;
++}
++#endif
++
++
+ /**
+  *	generic_id		-	add a generic drive id
+  *	@drive:	drive to make an ID block for
+@@ -216,6 +253,10 @@
+ 					break;
+ 				}
+ #endif
++#if defined(CONFIG_BLK_DEV_TANGO2_ISAIDEDMA) || defined(CONFIG_BLK_DEV_TANGO2_BMIDEDMA)
++                               // We may want to limit numbers of bhs to 2 for ATAPI devices
++                               // max_sectors[hwif->major][drive->select.b.unit] = 8;
++#endif
+ 				printk ("CD/DVD-ROM");
+ 				break;
+ 			case ide_tape:
+@@ -295,7 +336,9 @@
+ 
+ 	if (IDE_CONTROL_REG) {
+ 		/* take a deep breath */
++#ifndef CONFIG_SD_IDE_FASTPROBE
+ 		ide_delay_50ms();
++#endif
+ 		a = hwif->INB(IDE_ALTSTATUS_REG);
+ 		s = hwif->INB(IDE_STATUS_REG);
+ 		if ((a ^ s) & ~INDEX_STAT) {
+@@ -308,7 +351,9 @@
+ 			hd_status = IDE_ALTSTATUS_REG;
+ 		}
+ 	} else {
++#ifndef CONFIG_SD_IDE_FASTPROBE
+ 		ide_delay_50ms();
++#endif
+ 		hd_status = IDE_STATUS_REG;
+ 	}
+ 
+@@ -326,6 +371,9 @@
+ 		/* ask drive for ID */
+ 		hwif->OUTB(cmd, IDE_COMMAND_REG);
+ 	}
++#ifdef CONFIG_SD_IDE_FASTPROBE
++	ide_wait_stat_sd(hwif, hd_status, BUSY_STAT, 0, 0);
++#else
+ 	timeout = ((cmd == WIN_IDENTIFY) ? WAIT_WORSTCASE : WAIT_PIDENTIFY) / 2;
+ 	timeout += jiffies;
+ 	do {
+@@ -339,9 +387,10 @@
+ 
+ 	/* wait for IRQ and DRQ_STAT */
+ 	ide_delay_50ms();
++#endif
++
+ 	if (OK_STAT((hwif->INB(IDE_STATUS_REG)), DRQ_STAT, BAD_R_STAT)) {
+ 		unsigned long flags;
+-
+ 		/* local CPU only; some systems need this */
+ 		local_irq_save(flags);
+ 		/* drive returned ID */
+@@ -381,7 +430,6 @@
+ 		/* enable device irq */
+ 		hwif->OUTB(drive->ctl, IDE_CONTROL_REG);
+ 	}
+-
+ 	retval = actual_try_to_identify(drive, cmd);
+ 
+ 	if (autoprobe) {
+@@ -448,6 +496,7 @@
+ 		if ((drive->media != ide_disk) && (cmd == WIN_IDENTIFY))
+ 			return 4;
+ 	}
++
+ #ifdef DEBUG
+ 	printk("probing for %s: present=%d, media=%d, probetype=%s\n",
+ 		drive->name, drive->present, drive->media,
+@@ -457,15 +506,32 @@
+ 	/* needed for some systems
+ 	 * (e.g. crw9624 as drive0 with disk as slave)
+ 	 */
++#ifdef CONFIG_SD_IDE_FASTPROBE
++	ide_wait_stat_sd(hwif, IDE_STATUS_REG, BUSY_STAT, 0, 1);
++#else
+ 	ide_delay_50ms();
++#endif
+ 	SELECT_DRIVE(drive);
++#ifdef CONFIG_SD_IDE_FASTPROBE
++	if (hwif->INB(IDE_SELECT_REG) != drive->select.all)
++		return 3;
++	// do not check READY (for CDROM)
++	// if ((hwif->INB(IDE_STATUS_REG) & READY_STAT) == 0)
++	// 	return 3;
++#else
+ 	ide_delay_50ms();
++#endif
++
+ 	if (hwif->INB(IDE_SELECT_REG) != drive->select.all && !drive->present) {
+ 		if (drive->select.b.unit != 0) {
+ 			/* exit with drive0 selected */
+ 			SELECT_DRIVE(&hwif->drives[0]);
+ 			/* allow BUSY_STAT to assert & clear */
++#ifdef CONFIG_SD_IDE_FASTPROBE
++			ide_wait_stat_sd(hwif, IDE_STATUS_REG, BUSY_STAT, 0, 1);
++#else
+ 			ide_delay_50ms();
++#endif
+ 		}
+ 		/* no i/f present: mmm.. this should be a 4 -ml */
+ 		return 3;
+@@ -510,7 +576,11 @@
+ 	if (drive->select.b.unit != 0) {
+ 		/* exit with drive0 selected */
+ 		SELECT_DRIVE(&hwif->drives[0]);
++#ifdef CONFIG_SD_IDE_FASTPROBE
++		ide_wait_stat_sd(hwif, IDE_STATUS_REG, BUSY_STAT, 0, 1);
++#else
+ 		ide_delay_50ms();
++#endif
+ 		/* ensure drive irq is clear */
+ 		(void) hwif->INB(IDE_STATUS_REG);
+ 	}
+@@ -645,13 +715,16 @@
+ 	if (hwif->mmio == 2)
+ 		return 0;
+ 	addr_errs  = hwif_check_region(hwif->io_ports[IDE_DATA_OFFSET], 1);
+-	for (i = IDE_ERROR_OFFSET; i <= IDE_STATUS_OFFSET; i++)
++	for (i = IDE_ERROR_OFFSET; i <= IDE_STATUS_OFFSET; i++) {
+ 		addr_errs += hwif_check_region(hwif->io_ports[i], 1);
+-	if (hwif->io_ports[IDE_CONTROL_OFFSET])
++	}
++	if (hwif->io_ports[IDE_CONTROL_OFFSET]) {
+ 		addr_errs += hwif_check_region(hwif->io_ports[IDE_CONTROL_OFFSET], 1);
++	}
+ #if defined(CONFIG_AMIGA) || defined(CONFIG_MAC)
+-	if (hwif->io_ports[IDE_IRQ_OFFSET])
++	if (hwif->io_ports[IDE_IRQ_OFFSET]) {
+ 		addr_errs += hwif_check_region(hwif->io_ports[IDE_IRQ_OFFSET], 1);
++	}
+ #endif /* (CONFIG_AMIGA) || (CONFIG_MAC) */
+ 	/* If any errors are return, we drop the hwif interface. */
+ 	hwif->straight8 = 0;
+@@ -913,7 +986,6 @@
+ 		enable_irq(irqd);
+ 		
+ 	ide_tune_drives(hwif);
+-
+ }
+ 
+ EXPORT_SYMBOL(probe_hwif);
+@@ -1078,9 +1150,9 @@
+ 	 */
+ 	if (!match || match->irq != hwif->irq) {
+ 		int sa = SA_INTERRUPT;
+-#if defined(__mc68000__) || defined(CONFIG_APUS)
++#if defined(__mc68000__) || defined(CONFIG_APUS) || defined(CONFIG_TANGO2)
+ 		sa = SA_SHIRQ;
+-#endif /* __mc68000__ || CONFIG_APUS */
++#endif /* __mc68000__ || CONFIG_APUS || CONFIG_TANGO2 */
+ 
+ 		if (IDE_CHIPSET_IS_PCI(hwif->chipset)) {
+ 			sa = SA_SHIRQ;
+@@ -1136,6 +1208,7 @@
+ 	spin_unlock_irqrestore(&io_request_lock, flags);
+ #endif
+ 
++
+ #if !defined(__mc68000__) && !defined(CONFIG_APUS) && !defined(__sparc__)
+ 	printk("%s at 0x%03lx-0x%03lx,0x%03lx on irq %d", hwif->name,
+ 		hwif->io_ports[IDE_DATA_OFFSET],
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/Makefile linuxmips-2.4.30/drivers/ide/Makefile
+--- linuxmips-2.4.30.ref/drivers/ide/Makefile	2004-04-15 20:14:15.000000000 -0700
++++ linuxmips-2.4.30/drivers/ide/Makefile	2007-05-08 10:41:54.000000000 -0700
+@@ -11,14 +11,14 @@
+ 
+ export-objs := ide-iops.o ide-taskfile.o ide-proc.o ide.o ide-probe.o ide-probe-mini.o ide-dma.o ide-lib.o setup-pci.o ide-io.o ide-disk.o
+ 
+-all-subdirs	:= arm legacy pci ppc raid
+-mod-subdirs	:= arm legacy pci ppc raid
++all-subdirs	:= arm legacy pci ppc raid tango2
++mod-subdirs	:= arm legacy pci ppc raid tango2
+ 
+ obj-y		:=
+ obj-m		:=
+ ide-obj-y	:=
+ 
+-subdir-$(CONFIG_BLK_DEV_IDE) += legacy ppc arm raid pci
++subdir-$(CONFIG_BLK_DEV_IDE) += legacy ppc arm raid pci tango2
+ 
+ # First come modules that register themselves with the core
+ 
+@@ -55,6 +55,7 @@
+   obj-y		+= legacy/idedriver-legacy.o
+   obj-y		+= ppc/idedriver-ppc.o
+   obj-y		+= arm/idedriver-arm.o
++  obj-y		+= tango2/idedriver-tango2.o
+ else
+   ifeq ($(CONFIG_BLK_DEV_HD_ONLY),y)
+ 	subdir-$(CONFIG_BLK_DEV_HD_ONLY) += legacy
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/setup-pci.c linuxmips-2.4.30/drivers/ide/setup-pci.c
+--- linuxmips-2.4.30.ref/drivers/ide/setup-pci.c	2003-08-13 10:19:17.000000000 -0700
++++ linuxmips-2.4.30/drivers/ide/setup-pci.c	2007-05-08 10:41:54.000000000 -0700
+@@ -228,6 +228,7 @@
+ 			case PCI_DEVICE_ID_AMD_VIPER_7409:
+ 			case PCI_DEVICE_ID_CMD_643:
+ 			case PCI_DEVICE_ID_SERVERWORKS_CSB5IDE:
++			case PCI_DEVICE_ID_PROMISE_20246:
+ 				simplex_stat = hwif->INB(dma_base + 2);
+ 				hwif->OUTB((simplex_stat&0x60),(dma_base + 2));
+ 				simplex_stat = hwif->INB(dma_base + 2);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_bm.c linuxmips-2.4.30/drivers/ide/tango2/em86xx_bm.c
+--- linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_bm.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/tango2/em86xx_bm.c	2007-05-08 10:41:54.000000000 -0700
+@@ -0,0 +1,1058 @@
++/*
++ * driver/ide/em86xx/em86xx_bm.c
++ * 
++ * EM86XX Bus Master IDE driver
++ *
++ * PIO mode support by Ho Lee 01/15/2004
++ * Multi-word DMA mode support by Ho Lee 01/29/2004
++ */
++
++/*
++ * Tango Bus Master IDE interface is different from that of Japser
++ * Japser's IDE controller is compatible wtih PCI-based IDE controller,
++ * and Tango's IDE controller is based on Japser's, but it doesn't make 
++ * use of PRD table for bus mastering and DMA transfer must go through
++ * MBUS. So device driver for Tango bus master IDE controller with DMA
++ * support looks similar to that of Mambo's ISA IDE controller. 
++ *
++ * So this implementation has many duplicated code with em86xx_isa.c
++ * But I would like to have separate file to keep clean code for that,
++ * because em86xx_isa.c contains some experimental code which is not used,
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/delay.h>
++#include <asm/io.h>
++#include <linux/ide.h>
++#include <asm/tango2/hardware.h>
++#include <asm/tango2/tango2api.h>
++#include "em86xx_ide.h"
++
++#ifdef MODULE
++#include <linux/module.h>
++MODULE_AUTHOR("Craig Qu");
++MODULE_DESCRIPTION(" Tango2 BM IDE driver");
++MODULE_LICENSE("GPL");
++#endif
++
++
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++// handlers
++static int em86xx_bmide_dma_read(ide_drive_t *drive);
++static int em86xx_bmide_dma_write(ide_drive_t *drive);
++static int em86xx_bmide_dma_begin(ide_drive_t *drive);
++static int em86xx_bmide_dma_end(ide_drive_t *drive);
++static int em86xx_bmide_dma_check(ide_drive_t *drive);
++static int em86xx_bmide_dma_host_on(ide_drive_t *drive);
++static int em86xx_bmide_dma_host_off(ide_drive_t *drive);
++static int em86xx_bmide_tune_chipset(ide_drive_t *drive, u8 speed);
++static int em86xx_bmide_dma_lostirq(ide_drive_t *drive);
++static int em86xx_bmide_dma_timeout(ide_drive_t *drive);
++
++// helper functions
++static struct buffer_head *em86xx_bmide_dma_setup(int read, struct request *rq, int stop_if_fragment);
++static int em86xx_bmide_rwdma(ide_drive_t *drive, int read, struct request *rq);
++static int em86xx_bmide_dma_end_io(ide_drive_t *drive);
++static ide_startstop_t em86xx_bmide_dma_intr(ide_drive_t *drive);
++
++// switchbox and MBUS
++static int g_sbox_port_read = -1, g_sbox_port_write = -1;
++static unsigned int g_regbase_read, g_regbase_write;
++static int g_irq_read, g_irq_write;
++
++// Misc
++static struct request *crq = NULL;
++static int crq_ntransfer = 0;
++
++#define CONFIG_RUNTIME_CLK_CALC
++
++#ifdef CONFIG_RUNTIME_CLK_CALC
++typedef struct {
++	unsigned long cycle_time;
++	unsigned long active_time;
++	unsigned long recovery_time;
++	unsigned long setup_time;
++	unsigned long hold_time;
++} j2_tim_pio_dma_t;
++
++typedef struct {
++	unsigned long t_zah;//
++	unsigned long t_mli;//
++	unsigned long t_ack;//
++	unsigned long t_env;//
++	unsigned long t_rp;	//
++	unsigned long t_cyc;//
++	unsigned long t_cvh;//
++	unsigned long t_cvs;//
++} j2_tim_udma_t;
++
++static j2_tim_pio_dma_t	j2_pio_timings[] = 
++{
++//	 cycle	, active, recov	, setup	, hold
++	{600	, 165	, 70	, 70	, 30	},
++	{383	, 125	, 70	, 50	, 20	},
++	{240	, 100	, 70	, 30	, 15	},
++	{180	, 80	, 70	, 30	, 10	},
++	{120	, 70	, 25	, 25	, 10	},
++};
++
++static j2_tim_pio_dma_t	j2_dma_timings[] =
++{
++//	 cycle	, active, recov	, setup	, hold
++	{480	, 215	, 215	, 50	, 20	},
++	{150	, 80	, 50	, 30	, 15	},
++	{120	, 70	, 25	, 25	, 10	},
++};
++
++// We round 16.8 to 17 - Ex: mode 5, t_cyc=16.8!!!
++static j2_tim_udma_t j2_udma_timings[] =
++{
++//	 t_zah,  t_mli, t_ack,  t_env,  t_rp,  t_cyc   t_cvh   t_cvs
++	{ 20,	 20,	 20,	20,		160,	112,	  7,	 70	},
++	{ 20,	 20,	 20,	20,		125,	 73,	  7,	 48	},
++	{ 20,	 20,	 20,	20,		100,	 54,	  7,	 31	},
++	{ 20,	 20,	 20,	20,		100,	 39,	  7,	 20	},
++	{ 20,	 20,	 20,	20,		100,	 25,	  7,	  7	},
++	{ 20,	 20,	 20,	20,		 85,	 17,	 10,	 10	},
++	{ 20,	 20,	 20,	20,		 85,	 13,	 10,	 10	},
++	{ 20,	 20,	 20,	20,		 85,	 13,	 10,	 10	},
++};
++
++static unsigned int CalcRegValTiming_PIO_DMA(j2_tim_pio_dma_t *t, unsigned long ide_clock);
++static unsigned int CalcRegValTiming1_UDMA(j2_tim_udma_t *t, unsigned long ide_clock);
++static unsigned int CalcRegValTiming2_UDMA(j2_tim_udma_t *t, unsigned long ide_clock);
++#endif /* CONFIG_RUNTIME_CLK_CALC */
++
++/* Merge BH as much as possible */
++#define EM86XX_BMIDE_DMA_MERGE_BH
++
++// bounce buffer
++#define DMA_BOUNCE_BUF_ORDER		(19 - PAGE_SHIFT)	// maximum = 128 sectors = 2^7 sectors = 2^7 * 2^9 bytes = 2^16 bytes
++static unsigned char *g_bounce_buf = NULL;
++#endif
++
++// helper functions
++static void em86xx_bmide_tune_chipset_drive(int drive, int speed, int verbose);
++
++//
++// data structure initialization
++//
++
++void em86xx_bmide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port, ide_ioreg_t ctrl_port, int *irq)
++{
++	int i;
++	ide_ioreg_t reg;
++
++	memset(hw, 0, sizeof(*hw));
++
++	// setup io_ports
++	for (i = IDE_DATA_OFFSET, reg = data_port; i <= IDE_STATUS_OFFSET; i++) {
++		hw->io_ports[i] = reg;
++		reg += 4;
++	}
++
++	hw->io_ports[IDE_CONTROL_OFFSET] = ctrl_port;
++	hw->dma = NO_DMA;
++
++	// Tango has two interrupts for IDE controller : IRQ_IDECTRL_IDE, IRQ_IDECTRL_IDEDMA
++	// IRQ_IDECTRL_IDEDMA is to be used for DMA transfer but it is almost same with 
++	// IRQ_IDECTRL_IDE interrupt.  Tango triggers IDEDMA interrupt after DMA FIFO is
++	// flushed, and it stays high until BMIS register bit 2 is cleared. 
++	// Use IRQ_IDECTRL_IDE interrupt for both of PIO and DMA.
++	if (irq) 
++		*irq = IRQ_IDECTRL_IDE;
++}
++
++//
++// initialize IDE driver
++//
++
++int __init em86xx_bmide_init(void)
++{
++	int index, i;
++	ide_hwif_t *hwif;
++	hw_regs_t hw;
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	extern int tango2_bmide_enabled(void);
++	if (tango2_bmide_enabled() == 0)
++		return 0;
++#endif
++	// Enable bus master IDE interface
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_pri_idectl, 0x8400);
++	// no skew : normal IORDY, normal data
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_idesrc, 0);
++	// Enable non-PRD mode
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_bmic, 0x4);
++
++	em86xx_bmide_init_hwif_ports(&hw, REG_BASE_host_interface_BMIDE, REG_BASE_host_interface + IDECTRL_pri_ctrlblock, &hw.irq);
++	index = ide_register_hw(&hw, NULL);
++	printk("SMP863x Bus Mastering IDE activated as ide%d.\n", index);
++
++	// initialize ide_hwifs data structure
++	// supports only one interface
++	for (i = index; i < index + 1; ++i) {
++		// register DMA handler
++		hwif = &ide_hwifs[i];
++		hwif->OUTB = em86xx_ide_OUTB;
++		hwif->OUTW = em86xx_ide_OUTW;
++		hwif->OUTBSYNC = em86xx_ide_OUTBSYNC;
++		hwif->INB = em86xx_ide_INB;
++		hwif->INW = em86xx_ide_INW;
++		hwif->INSW = em86xx_ide_INSW;
++		hwif->OUTSW = em86xx_ide_OUTSW;
++                // MBUS can transfer two separate chunks of data blocks
++                // but kernel usually allocate 4KB for each buffer cache,
++                // which can hold 8 sectors, and usually they are not continous
++                // So TANGO2X IDE interface can handle 16 sectors in best performance
++                // If the request queue is bigger than this, driver need to use
++                // bounce buffer
++		hwif->rqsize = 16;
++	    if (!noautodma) {
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++		hwif->autodma = 1;
++		hwif->atapi_dma = 1;
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEUDMA
++		hwif->ultra_mask = 0x7f;        // enable all Ultra DMA	
++#else
++		hwif->ultra_mask = 0x00;		// disable all Ultra DMA
++#endif
++		hwif->udma_four = 1;
++		hwif->mwdma_mask = 0x07;		// enable all Multi-word DMA (0/1/2)
++		hwif->swdma_mask = 0x80;		// disable all Single-word DMA
++
++		// registers
++		hwif->dma_command = REG_BASE_host_interface + IDECTRL_bmic;
++		hwif->dma_status = REG_BASE_host_interface + IDECTRL_bmis;
++		hwif->dma_prdtable = REG_BASE_host_interface + IDECTRL_bmidtp;
++
++		// handlers
++		hwif->ide_dma_read = em86xx_bmide_dma_read;
++		hwif->ide_dma_write = em86xx_bmide_dma_write;
++		hwif->ide_dma_begin = em86xx_bmide_dma_begin;
++		hwif->ide_dma_end = em86xx_bmide_dma_end;
++		hwif->ide_dma_check = em86xx_bmide_dma_check;
++		hwif->ide_dma_on = em86xx_ide_dma_on;
++		hwif->ide_dma_off = em86xx_ide_dma_off;
++		hwif->ide_dma_off_quietly = em86xx_ide_dma_off_quietly;
++		hwif->ide_dma_test_irq = em86xx_ide_dma_test_irq;
++		hwif->ide_dma_host_on = em86xx_bmide_dma_host_on;
++		hwif->ide_dma_host_off = em86xx_bmide_dma_host_off;
++		hwif->ide_dma_bad_drive = em86xx_ide_dma_bad_drive;
++		hwif->ide_dma_good_drive = em86xx_ide_dma_good_drive;
++		hwif->ide_dma_count = em86xx_ide_dma_count;
++		hwif->ide_dma_verbose = em86xx_ide_dma_verbose;
++		hwif->ide_dma_retune = em86xx_ide_dma_retune;
++		hwif->ide_dma_lostirq = em86xx_bmide_dma_lostirq;
++		hwif->ide_dma_timeout = em86xx_bmide_dma_timeout;
++		hwif->speedproc = em86xx_bmide_tune_chipset;
++#endif
++	    }
++	}
++
++	// set to maximum PIO mode
++	for (i = 0; i < MAX_DRIVES; ++i)
++		em86xx_bmide_tune_chipset_drive(i, XFER_PIO_4, 0);
++
++	if (!noautodma) {
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++	if ((g_bounce_buf = (unsigned char *)__get_free_pages(GFP_KERNEL, DMA_BOUNCE_BUF_ORDER)) == NULL)
++		printk("IDE: Can not allocate buffer for IDE transfer\n");
++
++#ifdef EM86XX_BOUNCE_BUFFER_NOCACHE
++	g_bounce_buf = (unsigned char *)KSEG1ADDR((unsigned long)g_bounce_buf);
++	printk("Bounce buffer starts at 0x%08lx\n", (unsigned long)g_bounce_buf);
++#endif
++
++#endif	// EM86XX_BMIDEDMA
++	}
++	return 0;
++}
++
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++
++//
++// IDE DMA handlers
++//
++
++int em86xx_bmide_dma_read(ide_drive_t *drive)
++{
++	struct request *rq;
++
++	drive->waiting_for_dma = 1;
++	rq = HWGROUP(drive)->rq;
++	// printk("em86xx_bmide_dma_read : nsect = %ld\n", rq->nr_sectors);
++	return em86xx_bmide_rwdma(drive, 1, rq);
++}
++
++int em86xx_bmide_dma_write(ide_drive_t *drive)
++{
++	struct request *rq;
++
++	drive->waiting_for_dma = 1;
++	rq = HWGROUP(drive)->rq;
++	// printk("em86xx_bmide_dma_write : sector = %ld, nsect = %ld\n", rq->sector, rq->nr_sectors);
++	return em86xx_bmide_rwdma(drive, 0, rq);
++}
++
++int em86xx_bmide_dma_begin(ide_drive_t *drive)
++{
++	return(0);
++}
++
++int em86xx_bmide_dma_end(ide_drive_t *drive)
++{
++	int status;
++
++	drive->waiting_for_dma = 0;
++	status = em86xx_bmide_dma_end_io(drive);
++	return(status);
++}
++
++int em86xx_bmide_dma_lostirq(ide_drive_t *drive)
++{
++	struct request *rq = HWGROUP(drive)->rq;
++	unsigned int regbase = ((rq->cmd == READ) ? g_regbase_read : g_regbase_write);
++
++	if (em86xx_mbus_inuse(regbase) != 0) 
++		em86xx_mbus_reset(regbase, SBOX_IDEDVD);
++	return 0;
++}
++
++int em86xx_bmide_dma_timeout(ide_drive_t *drive)
++{
++	struct request *rq = HWGROUP(drive)->rq;
++	unsigned int regbase = ((rq->cmd == READ) ? g_regbase_read : g_regbase_write);
++
++	if (em86xx_mbus_inuse(regbase) != 0) 
++		em86xx_mbus_reset(regbase, SBOX_IDEDVD);
++	return 0;
++}
++
++int em86xx_bmide_dma_check(ide_drive_t *drive)
++{
++	int mode;
++
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEUDMA
++	if ((gbus_read_uint32(pGBus, REG_BASE_host_interface + IDECTRL_idestatus) & 0x02) == 0x02)
++        	mode = 1;   // 40 donductor cable (UDMA33) : Mode 0/1/2
++	else 
++		mode = 4;   // 80 conductor cable : Mode 0/1/2/3/4/5/6
++#else
++	mode = 0;       // MW DMA mode 2
++#endif
++
++	return em86xx_ide_config_drive_for_dma(drive, mode);
++}
++
++int em86xx_bmide_dma_host_on(ide_drive_t *drive)
++{
++	if (drive->using_dma) {
++		ide_hwif_t *hwif = HWIF(drive);
++		u8 unit = (drive->select.b.unit & 0x01);
++		u8 dma_stat = hwif->INB(hwif->dma_status);
++
++		hwif->OUTB((dma_stat | (1 << (5 + unit))), hwif->dma_status);
++		return 0;
++	}
++	return 1;
++}
++
++int em86xx_bmide_dma_host_off(ide_drive_t *drive)
++{
++	ide_hwif_t *hwif = HWIF(drive);
++	u8 unit = (drive->select.b.unit & 0x01);
++	u8 dma_stat = hwif->INB(hwif->dma_status);
++
++	hwif->OUTB((dma_stat & ~(1 << (5 + unit))), hwif->dma_status);
++
++	return 0;
++}
++
++int em86xx_bmide_tune_chipset(ide_drive_t *drive, u8 speed)
++{
++	em86xx_bmide_tune_chipset_drive(drive->select.b.unit, speed, 1);
++
++	return ide_config_drive_speed(drive, speed);
++}
++
++//
++// helper functions
++//
++
++#ifdef EM86XX_BMIDE_DMA_MERGE_BH
++#define MBUS_LINEAR_MAX 	(0x2000 - 1)
++#endif
++
++/* Get the I/O size of given request */
++static inline int get_request_size(struct request *rq)
++{
++	unsigned int rq_size;
++	struct buffer_head *bh;
++
++	for (rq_size = 0, bh = rq->bh; bh != NULL; bh = bh->b_reqnext) 
++		rq_size += bh->b_size;
++
++	return(rq_size);
++}
++
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++// return the number of fragmented blocks
++static __inline__ int em86xx_bmide_request_fragment(struct request *rq)
++{
++	int ntransfer = 0;
++	struct buffer_head *bh = rq->bh;
++
++#ifdef EM86XX_BMIDE_DMA_MERGE_BH
++	unsigned long addr;
++	unsigned int size;
++	unsigned int sector;
++
++	if (rq == crq)
++		return(crq_ntransfer);
++
++	/* Try to merge multiple BH if possible -- deal with one fragment only */
++	for (ntransfer = 0, bh = rq->bh;;) {
++		if (bh == NULL)
++			break;
++		else {
++			if (++ntransfer > 1) /* More than one fragment found */
++				break; 
++		}
++		addr = (unsigned long)bh->b_data;
++		size = bh->b_size;
++		sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((addr + size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else {	/* Merge the next BH */
++				size += bh->b_size;
++			}
++		}	
++	}
++	if (ntransfer < 2) /* This can be done with one fragment (linear or rectangular) */
++		goto done;
++
++	/* Try to merge multiple BH if possible -- deal with two fragments or more */
++	for (ntransfer = 0, bh = rq->bh;;) {
++		if (bh == NULL)
++			break;
++		else
++			++ntransfer;
++		addr = (unsigned long)bh->b_data;
++		size = bh->b_size;
++		sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((addr + size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else if ((size + bh->b_size) > MBUS_LINEAR_MAX)
++				break;	/* Size too large */
++			else {	/* Merge the next BH */
++				size += bh->b_size;
++			}
++		}	
++	}
++#else
++	if (rq == crq)
++		return(crq_ntransfer);
++
++	do {
++		++ntransfer;
++	} while ((bh = bh->b_reqnext) != NULL);
++#endif
++
++done:
++	return ntransfer;
++}
++
++// prepare MBUS for DMA transfer
++// stop_if_fragment must be non-zero
++static struct buffer_head *em86xx_bmide_dma_setup(int read, struct request *rq, int stop_if_fragment)
++{
++	struct buffer_head *bh = rq->bh;
++
++	// scans buffer head and calculate the requested transfer size
++	// MBUS can't transfer to more than two separate regions. 
++	// So if the buffer head is too fragmented, return non-NULL value
++#ifdef EM86XX_BMIDE_DMA_MERGE_BH
++	struct {
++		unsigned long addr;
++		unsigned int size;
++		unsigned int sector;
++	} transfer[2], *ptransfer;
++	unsigned int ntransfer;
++
++	crq = rq;
++
++	/* Try to merge multiple BH if possible -- one fragment only */
++	for (ntransfer = 0, ptransfer = &transfer[0], bh = rq->bh;; ptransfer++) {
++		if (bh == NULL)
++			break;
++		else if (++ntransfer > 1)
++			break;
++
++		ptransfer->addr = (unsigned long)bh->b_data;
++		ptransfer->size = bh->b_size;
++		ptransfer->sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((ptransfer->addr + ptransfer->size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else {	/* Merge the next BH */
++				ptransfer->size += bh->b_size;
++			}
++		}	
++	}
++	if (ntransfer < 2) /* This can be done with one fragment (linear or rectangular) */
++		goto start_transfer;
++
++	/* Try to merge multiple BH if possible */
++	for (ntransfer = 0, ptransfer = &transfer[0], bh = rq->bh;; ptransfer++) {
++		if (bh == NULL)
++			break;
++		else if (++ntransfer > 2)
++			break;
++
++		ptransfer->addr = (unsigned long)bh->b_data;
++		ptransfer->size = bh->b_size;
++		ptransfer->sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((ptransfer->addr + ptransfer->size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else if ((ptransfer->size + bh->b_size) > MBUS_LINEAR_MAX)
++				break;	/* Size too large */
++			else {	/* Merge the next BH */
++				ptransfer->size += bh->b_size;
++			}
++		}	
++	}
++
++	if ((ntransfer > 2) && (stop_if_fragment != 0)) {
++		crq_ntransfer = ntransfer;
++		return bh;
++	}
++#else
++	struct buffer_head *prevbh;
++
++	struct {
++		unsigned long addr;
++		unsigned int size;
++	} transfer[2], *ptransfer;
++	unsigned int ntransfer, size;
++
++	crq = rq;
++
++	for (prevbh = NULL, ntransfer = 0, ptransfer = transfer, size = 0; bh != NULL; prevbh = bh, bh = bh->b_reqnext) {
++		if (++ntransfer > 2) {
++			if (stop_if_fragment) {
++				crq_ntransfer = ntransfer;
++				return bh;
++			}
++			break;
++		}
++		ptransfer->addr = (unsigned long) bh->b_data;
++		ptransfer->size = bh->b_size;
++		// printk("MBUS : bh = %p, bh->next = %p, %08x, %08x\n", bh, bh->b_reqnext, ptransfer->addr, ptransfer->size);
++		++ptransfer;
++		size += bh->b_size;
++	}
++#endif
++
++start_transfer:
++
++	crq_ntransfer = ntransfer;
++
++	// setup MBUS
++	if (ntransfer == 1) {
++#ifdef CONFIG_NONCOHERENT_IO
++		if (!is_physical(transfer[0].addr)) {
++			if (read) 
++				dma_cache_inv(transfer[0].addr, transfer[0].size);
++			else
++				dma_cache_wback_inv(transfer[0].addr, transfer[0].size);
++		}
++#endif
++		if (transfer[0].size <= MBUS_LINEAR_MAX) {
++			/* Do linear transfer */
++			em86xx_mbus_setup_dma_linear(read ? g_regbase_read : g_regbase_write, SBOX_IDEDVD,
++					is_physical(transfer[0].addr) ? transfer[0].addr : PHYSADDR(transfer[0].addr), 
++					transfer[0].size);
++		} else {
++			/* Do rectangular transfer */
++			unsigned int i, horiz, lines, sz;
++			for (i = 0, horiz = 1, sz = transfer[0].size; (i < 12) && ((sz & 0x01) == 0); ++i, horiz <<= 1, sz >>= 1) 
++				;
++			lines = transfer[0].size >> i;
++			em86xx_mbus_setup_dma_rectangle(read ? g_regbase_read : g_regbase_write, SBOX_IDEDVD,
++					is_physical(transfer[0].addr) ? transfer[0].addr : PHYSADDR(transfer[0].addr), 
++					horiz, lines, horiz);
++		}
++	} else {
++#ifdef CONFIG_NONCOHERENT_IO
++		if (read) {
++			if (!is_physical(transfer[0].addr)) 
++				dma_cache_inv(transfer[0].addr, transfer[0].size);
++			if (!is_physical(transfer[1].addr)) 
++				dma_cache_inv(transfer[1].addr, transfer[1].size);
++		} else {
++			if (!is_physical(transfer[0].addr)) 
++				dma_cache_wback_inv(transfer[0].addr, transfer[0].size);
++			if (!is_physical(transfer[1].addr)) 
++				dma_cache_wback_inv(transfer[1].addr, transfer[1].size);
++		}
++#endif
++		em86xx_mbus_setup_dma_double(read ? g_regbase_read : g_regbase_write, SBOX_IDEDVD,
++			is_physical(transfer[0].addr) ? transfer[0].addr : PHYSADDR(transfer[0].addr), transfer[0].size,
++			is_physical(transfer[1].addr) ? transfer[1].addr : PHYSADDR(transfer[1].addr), transfer[1].size);
++	}
++
++	return bh;
++}
++
++// core of DMA read and write transfer
++int em86xx_bmide_rwdma(ide_drive_t *drive, int read, struct request *rq)
++{
++	unsigned int buflen = get_request_size(rq);
++	unsigned long cj;
++	int retry;
++	static const int max_retry = 5;
++
++	// setup switchbox and wait for its readiness
++	if (g_sbox_port_read < 0) {
++		for (retry = 0; ((g_sbox_port_read = em86xx_mbus_alloc_dma(SBOX_IDEDVD, 1, &g_regbase_read, &g_irq_read)) < 0) && (retry < max_retry); retry++) {
++			for (cj = jiffies + (HZ / 100); jiffies < cj;);
++		}
++		if (g_sbox_port_read < 0) { /* Failed to use DMA, use PIO instead */
++			printk("%s: failed to obtain DMA channel, use PIO instead.\n", drive->name);
++			return(1);
++		}
++	}
++	if (g_sbox_port_write < 0) {
++		for (retry = 0; ((g_sbox_port_write = em86xx_mbus_alloc_dma(SBOX_IDEDVD, 0, &g_regbase_write, &g_irq_write)) < 0) && (retry < max_retry); retry++) {
++			for (cj = jiffies + (HZ / 100); jiffies < cj;);
++		}
++		if (g_sbox_port_write < 0) { /* Failed to use DMA, use PIO instead */
++			printk("%s: failed to obtain DMA channel, use PIO instead.\n", drive->name);
++			em86xx_mbus_free_dma(g_sbox_port_read);
++			g_sbox_port_read = -1;
++			return(1);
++		}
++	}
++
++	// setup interrupt handler
++	// only required for hard disk. CD-ROM driver registers a handler for itself
++	if (drive->media == ide_disk)
++		ide_set_handler(drive, &em86xx_bmide_dma_intr, 10 * WAIT_CMD, NULL);
++
++	// setup MBUS
++	if (em86xx_bmide_dma_setup(read, rq, 1)) {
++		// if the request is too fragmented (over two non-continuous regions)
++		// use the bounce buffer. For read transfers, transfer to bounce buffer
++		// and copy to original buffer head after transfer. For write transfers,
++		// copy the data to be written to bounce buffer first.
++		unsigned long buf = (unsigned long) g_bounce_buf;
++
++		if (!read) {
++			struct buffer_head *bh = rq->bh;
++#if 1
++			char *data;
++			u32 size;
++			extern int mbus_memcpy(u32 dst, u32 src, u32 size);
++			
++			/* Try to merge multiple BH for copying */
++			while (bh != NULL) {
++				data = bh->b_data;
++				size = bh->b_size;
++				for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++					if ((data + size) == bh->b_data)
++						size += bh->b_size; /* Contiguous */
++					else 
++						break;
++				}
++				mbus_memcpy(PHYSADDR(buf), PHYSADDR(data), size);
++#ifdef CONFIG_NONCOHERENT_IO
++				dma_cache_inv(buf, size);
++#endif
++				buf += size;
++			}
++#else
++			do {
++				memcpy((void *) buf, bh->b_data, bh->b_size);
++				buf += bh->b_size;
++			} while ((bh = bh->b_reqnext) != NULL);
++#endif
++#ifdef CONFIG_SD_CHECKERROR
++			if (buf > ((unsigned long) g_bounce_buf + (1 << (DMA_BOUNCE_BUF_ORDER + PAGE_SHIFT))))
++				printk("IDE: Bounce buffer is too small to fit requested transfers\n");
++#endif
++		}
++
++#ifdef CONFIG_NONCOHERENT_IO
++#ifndef EM86XX_BOUNCE_BUFFER_NOCACHE
++		dma_cache_wback_inv((unsigned long)g_bounce_buf, buflen);
++#endif
++#endif
++		// try to setup MBUS again. This always succeeds
++		em86xx_mbus_setup_dma(read ? g_regbase_read : g_regbase_write, SBOX_IDEDVD, PHYSADDR((unsigned long)g_bounce_buf), buflen, NULL, NULL);
++	} else {
++		em86xx_ide_dma_cache(rq, read);
++	}
++
++	// setup IDE DMA pointer and length
++	// IDE DMA pointer is not important since IDE controller is just a tunnel
++	// to MBUS. 
++	// gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_ide_dmaptr, (unsigned long)buf);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_ide_dmalen, (unsigned long)buflen);
++
++	// send IDE command
++	// 28 bits : READDMA or WRITEDMA
++	// 48 bits : READDMA_EXT or WRITEDMA_EXT
++	// DMARQ is asserted to low
++	if (drive->media == ide_disk) {
++		HWIF(drive)->OUTB(read ? (drive->addressing ? WIN_READDMA_EXT : WIN_READDMA) : (drive->addressing ? WIN_WRITEDMA_EXT : WIN_WRITEDMA), IDE_COMMAND_REG);
++	}
++
++	// start bus master transfer
++	// non-prd mode & bus master start
++	// DMAACK is asserted to high
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_bmic, 0x05 | (read ? 0x08 : 0x00));
++
++	return 0;
++}
++#endif
++
++// cleanup after DMA transfer is done
++int em86xx_bmide_dma_end_io(ide_drive_t *drive)
++{
++	int stat = 0;
++	struct request *rq = HWGROUP(drive)->rq;
++
++	// wait for DMA interrupt
++	// em86xx_wait_irq(IRQ_IDECTRL_IDEDMA);
++	// clear DMA interrupt
++
++	for (stat = 0; stat < 2000000; stat++) {
++		if ((gbus_read_uint32(pGBus, REG_BASE_host_interface + IDECTRL_bmis) & 0x4) != 0)
++			break;
++		else
++			udelay(1);
++	}
++
++	if (stat >= 2000000)
++		printk("%s: dma timeout.\n", drive->name);
++
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_bmis, gbus_read_uint32(pGBus, REG_BASE_host_interface + IDECTRL_bmis));
++
++	// confirm whether MBUS transfer is done
++	// due to the memory arbitration, IDE device thinks the DMA transfer
++	// is done, but the data might be held in MBUS FIFO
++	stat = em86xx_mbus_wait(rq->cmd == READ ? g_regbase_read : g_regbase_write, SBOX_IDEDVD);
++
++	HWIF(drive)->INB(IDE_STATUS_REG);
++
++	// Stop bus mastering
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_bmic, 0x4);
++
++	// Check status
++	if (stat != 0) 
++		goto done;
++	
++	if (rq->cmd == READ) {
++		if (em86xx_bmide_request_fragment(rq) > 2) {
++			// copy buffer after transfer
++			unsigned long buf = (unsigned long) g_bounce_buf;
++			struct buffer_head *bh = rq->bh;
++#ifdef CONFIG_NONCOHERENT_IO
++#ifndef EM86XX_BOUNCE_BUFFER_NOCACHE
++			dma_cache_inv(buf, get_request_size(rq));
++#endif
++#endif
++#if 1
++			{
++				char *data;
++				u32 size;
++				extern int mbus_memcpy(u32 dst, u32 src, u32 size);
++			
++				/* Try to merge multiple BH for copying */
++				while (bh != NULL) {
++					data = bh->b_data;
++					size = bh->b_size;
++					for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++						if ((data + size) == bh->b_data)
++							size += bh->b_size; /* Contiguous */
++						else 
++							break;
++					}
++					mbus_memcpy(PHYSADDR(data), PHYSADDR(buf), size);
++#ifdef CONFIG_NONCOHERENT_IO
++					if (!is_physical((u32)data))
++						dma_cache_inv((unsigned long)data, size);
++#endif
++					buf += size;
++				}
++			}
++#else
++			do {
++				memcpy(bh->b_data, (void *) buf, bh->b_size);
++				buf += bh->b_size;
++			} while ((bh = bh->b_reqnext) != NULL);
++#endif
++		} else {
++			em86xx_ide_dma_cache(rq, 1 /* READ */);
++		}
++	}
++
++done:
++	/* Free up MBUS channel */
++	em86xx_mbus_free_dma(g_sbox_port_read);
++	em86xx_mbus_free_dma(g_sbox_port_write);
++	g_sbox_port_read = g_sbox_port_write = -1;
++	return((stat != 0) ? 1 : 0);
++}
++
++// DMA interrupt handler after transfer is done
++ide_startstop_t em86xx_bmide_dma_intr(ide_drive_t *drive)
++{
++	int i;
++	ide_hwif_t *hwif = HWIF(drive);
++	struct request *rq = HWGROUP(drive)->rq;
++
++	hwif->ide_dma_end(drive);
++
++	for (i = rq->nr_sectors; i > 0;) {
++		i -= rq->current_nr_sectors;
++		ide_end_request(drive, 1);
++	}
++
++	return ide_stopped;
++}
++
++#endif
++
++void em86xx_bmide_tune_chipset_drive(int drive, int speed, int verbose)
++{
++	int mode = speed & 0x0f;
++	unsigned int ctrlreg = gbus_read_uint32(pGBus, REG_BASE_host_interface + IDECTRL_pri_idectl);
++	unsigned int newflag = 0;
++
++#ifdef CONFIG_RUNTIME_CLK_CALC
++#define TIMING_MARGIN(x) (((x) * 105) / 100) /* add 5% margin */
++//#define TIMING_MARGIN(x) (x) /* no margin added */
++	extern unsigned long em8xxx_sys_frequency;
++	unsigned int ide_clock = TIMING_MARGIN(em8xxx_sys_frequency / 1000000); /* in MHz */
++#endif
++	
++	if (speed >= XFER_PIO_0 && speed <= XFER_PIO_4) {
++		// setup timing for PIO mode
++#ifdef CONFIG_RUNTIME_CLK_CALC
++		unsigned int dwRegVal = CalcRegValTiming_PIO_DMA(&(j2_pio_timings[speed - XFER_PIO_0]), ide_clock);
++		mode -= 8;
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0tim : IDECTRL_pri_drv1tim), dwRegVal);
++#else
++		static unsigned int s_pio_tim[] = {
++			0xff230ee6, 0xd41b0fa4, 0xb4150f63, 0xa7110f62, 0x9a0f0552
++		};
++
++		mode -= 8;
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0tim : IDECTRL_pri_drv1tim), s_pio_tim[mode]);
++#endif
++		if (verbose)
++			printk("IDE: Set drive %d to PIO mode %d\n", drive, mode);
++
++		// fast timing for PIO
++		newflag = 0x01;
++	} 
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++	else if (speed >= XFER_MW_DMA_0 && speed <= XFER_MW_DMA_2) {
++		// setup timing for Multi-word DMA
++#ifdef CONFIG_RUNTIME_CLK_CALC
++		unsigned int dwTimingDMA = CalcRegValTiming_PIO_DMA(&(j2_dma_timings[speed - XFER_MW_DMA_0]), ide_clock);
++		unsigned int dwTiming1 = CalcRegValTiming1_UDMA(&(j2_udma_timings[speed - XFER_MW_DMA_0]), ide_clock);
++		unsigned int dwTiming2 = CalcRegValTiming2_UDMA(&(j2_udma_timings[speed - XFER_MW_DMA_0]), ide_clock);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0tim : IDECTRL_pri_drv1tim), dwTimingDMA);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim1 : IDECTRL_pri_drv1udmatim1), dwTiming1);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim2 : IDECTRL_pri_drv1udmatim2), dwTiming2);
++#else
++		static unsigned int s_dma_tim[] = {
++			0xf33333b4, 0xa3130b73, 0x9c100552
++		};
++		static unsigned int s_udma_tim1[] = {
++			0x33330f0f, 0x33330f0f, 0x33330f0f
++		};
++		static unsigned int s_udma_tim2[] = {
++			0x00000107, 0x00000107, 0x00000107
++		};
++
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0tim : IDECTRL_pri_drv1tim), s_dma_tim[mode]);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim1 : IDECTRL_pri_drv1udmatim1), s_udma_tim1[mode]);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim2 : IDECTRL_pri_drv1udmatim2), s_udma_tim2[mode]);
++#endif
++		if (verbose)
++			printk("IDE: Set drive %d to Multi-word DMA mode %d\n", drive, mode);
++
++		// fast timing for PIO, prefetch enable
++		newflag = 0x05;
++	} 
++#endif
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEUDMA
++	else if (speed >= XFER_UDMA_0 && speed <= XFER_UDMA_7) {
++		// setup timing for Ultra DMA
++#ifdef CONFIG_RUNTIME_CLK_CALC
++		unsigned int dwTiming1 = CalcRegValTiming1_UDMA(&(j2_udma_timings[speed - XFER_UDMA_0]), ide_clock);
++		unsigned int dwTiming2 = CalcRegValTiming2_UDMA(&(j2_udma_timings[speed - XFER_UDMA_0]), ide_clock) | 0x1000;
++
++		// enable Ultra DMA
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_udmactl, 
++			gbus_read_uint32(pGBus, REG_BASE_host_interface + IDECTRL_udmactl) | ((drive == 0) ? 0x01 : 0x02));
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim1 : IDECTRL_pri_drv1udmatim1), dwTiming1);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim2 : IDECTRL_pri_drv1udmatim2), dwTiming2);
++#else
++		static unsigned int s_udma_tim1[] = {
++			0x44442418, 0x44441c10, 0x4444160b, 0x44441608,
++			0x44441605, 0x44441303, 0x44441302, 0x44441302
++		};
++		static unsigned int s_udma_tim2[] = {
++			0x0000110f, 0x0000110a, 0x00001106, 0x00001104, 
++			0x00001101, 0x00001202, 0x00001202, 0x00001202
++		};
++
++		// enable Ultra DMA
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_udmactl, 
++			gbus_read_uint32(pGBus, REG_BASE_host_interface + IDECTRL_udmactl) | ((drive == 0) ? 0x01 : 0x02));
++		
++		// set timing register
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim1 : IDECTRL_pri_drv1udmatim1), s_udma_tim1[mode]);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + ((drive == 0) ? IDECTRL_pri_drv0udmatim2 : IDECTRL_pri_drv1udmatim2), s_udma_tim2[mode]);
++#endif
++		if (verbose)
++			printk("IDE: Set drive %d to Ultra DMA mode %d\n", drive, mode);
++
++		newflag = 0x00;
++	}
++#endif
++
++	ctrlreg &= ~(drive == 0 ? 0x0f : 0xf0);
++	ctrlreg |= newflag << (drive * 4);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + IDECTRL_pri_idectl, ctrlreg);
++}
++
++void __exit em86xx_bmide_exit(void)
++{
++
++#ifdef CONFIG_BLK_DEV_TANGO2_BMIDEDMA
++#ifdef EM86XX_BOUNCE_BUFFER_NOCACHE
++        g_bounce_buf = (unsigned char *)em86xx_to_caddr((unsigned long)g_bounce_buf);
++#endif
++        free_pages((unsigned long)g_bounce_buf, DMA_BOUNCE_BUF_ORDER);
++#endif
++        return;
++}
++
++#ifdef MODULE
++module_init(em86xx_bmide_init);
++module_exit(em86xx_bmide_exit);
++#endif
++
++#ifdef CONFIG_RUNTIME_CLK_CALC
++/* The following is for runtime calculation of register value based on the mode and given
++ * system frequency by Ivan K. */
++static unsigned int CalcRegValTiming_PIO_DMA(j2_tim_pio_dma_t *t, unsigned long ide_clock)
++{
++	unsigned int dwRet;
++	unsigned int cycle_clks;	// ide clocks / cycle
++	unsigned int active_clks;	// ide clocks for active strobe
++	unsigned int recov_clks;	// ide clocks for recovery
++	unsigned int setup_clks;	// ide clocks for setup
++	unsigned int hold_clks;	// ide clocks for hold
++
++	// pio_timings in ns
++	cycle_clks	= (ide_clock * t->cycle_time)/1000;
++	active_clks	= (ide_clock * t->active_time)/1000;
++	recov_clks	= (ide_clock * t->recovery_time)/1000;
++	setup_clks	= (ide_clock * t->setup_time)/1000;
++	hold_clks	= (ide_clock * t->hold_time)/1000;
++
++	if(cycle_clks>0x7F) {
++		cycle_clks = 0x7F;
++	}
++	
++	if(active_clks>0x3F) {
++		active_clks = 0x3F;
++	}
++
++	if(recov_clks>0x3F) {
++		recov_clks = 0x3F;
++	}
++
++	if(setup_clks>0xF) {
++		setup_clks = 0xF;
++	}
++	
++	if(hold_clks>0x7) {
++		setup_clks = 0x7;
++	}
++	
++	dwRet	= (1<<31) | (cycle_clks<<24) | (active_clks<<16) | (recov_clks<<8) | (setup_clks<<4) | (hold_clks);
++
++	return dwRet;
++}
++
++static unsigned int CalcRegValTiming1_UDMA(j2_tim_udma_t *t, unsigned long ide_clock)
++{
++	unsigned int dwRet;
++	unsigned int t_zah,t_mli,t_ack,t_env,t_rp,t_cyc;
++
++	// pio_timings in ns
++	t_zah	= (ide_clock * t->t_zah)/1000;
++	t_mli	= (ide_clock * t->t_mli)/1000;
++	t_ack	= (ide_clock * t->t_ack)/1000;
++	t_env	= (ide_clock * t->t_env)/1000;
++	t_rp	= (ide_clock * t->t_rp) /1000;
++	t_cyc	= (ide_clock * t->t_cyc)/1000;
++
++	if ( t_zah > 0x0F ) {
++		t_zah = 0x0F;
++	}
++	if ( t_mli > 0x0F ) {
++		t_mli = 0x0F;
++	}
++	if ( t_ack > 0x0F ) {
++		t_ack = 0x0F;
++	}
++	if ( t_env > 0x0F) {
++		t_env = 0x0F;
++	}
++	if ( t_rp > 0x3F ) {
++		t_rp = 0x3F;
++	}
++	if ( t_cyc > 0x3F ) {
++		t_cyc = 0x3F;
++	}
++	
++	dwRet	= (t_zah<<28) | (t_mli<<24) | (t_ack<<20) | (t_env<<16) | (t_rp<<8) | (t_cyc);
++
++	return dwRet;
++}
++
++static unsigned int CalcRegValTiming2_UDMA(j2_tim_udma_t *t, unsigned long ide_clock)
++{
++	unsigned int dwRet;
++	unsigned int t_cvh,t_cvs;
++	
++	// pio_timings in ns
++	t_cvh	= (ide_clock * t->t_cvh)/1000;
++	t_cvs	= (ide_clock * t->t_cvs)/1000;
++
++	if ( t_cvh > 0x03 ) {
++		t_cvh = 0x03;
++	}
++	if ( t_cvs > 0x3F ) {
++		t_cvs = 0x3F;
++	}
++
++	dwRet	= (t_cvh<<8) | (t_cvs);
++
++	return dwRet;
++}
++#endif /* CONFIG_RUNTIME_CLK_CALC */
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_ide.c linuxmips-2.4.30/drivers/ide/tango2/em86xx_ide.c
+--- linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_ide.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/tango2/em86xx_ide.c	2007-05-08 10:41:54.000000000 -0700
+@@ -0,0 +1,204 @@
++/*
++ * driver/ide/em86xx/em86xx_ide.c
++ * 
++ * EM86XX IDE driver common code
++ *
++ * by Ho Lee March 4, 2003
++ */
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <asm/io.h>
++#include <linux/ide.h>
++#include <linux/delay.h>
++#include "em86xx_ide.h"
++
++//
++// data structure initialization
++//
++
++//
++// IDE HWIF interface introduced by Linux 2.4.22
++//
++
++// EM86XX IDE interface uses 16 bits wide bus
++// and byte write doesn't start write transaction
++
++void em86xx_ide_OUTB(u8 data, unsigned long port)
++{
++	gbus_write_uint16(pGBus, port, (unsigned short)data);
++}
++
++void em86xx_ide_OUTW(u16 data, unsigned long port)
++{
++	gbus_write_uint16(pGBus, port, (unsigned short)data);
++}
++
++void em86xx_ide_OUTBSYNC(ide_drive_t *drive, u8 data, unsigned long port)
++{
++	gbus_write_uint16(pGBus, port, (unsigned short)data);
++}
++
++u8 em86xx_ide_INB(unsigned long port)
++{
++	return((u8)(gbus_read_uint16(pGBus, port) & 0xff));
++}
++
++u16 em86xx_ide_INW(unsigned long port)
++{
++	return((u16)(gbus_read_uint16(pGBus, port) & 0xffff));
++}
++
++void em86xx_ide_INSW(unsigned long port, void *addr, u32 count)
++{
++	while (count--) {
++		*(u16 *)addr = (u16)(gbus_read_uint16(pGBus, port) & 0xffff);
++		addr += 2;
++	}
++}
++
++void em86xx_ide_OUTSW(unsigned long port, void *addr, u32 count)
++{
++	while (count--) {
++		gbus_write_uint16(pGBus, port, *(u16 *)addr);
++		addr += 2;
++	}
++}
++
++//
++//
++// DMA handlers
++// 
++
++int em86xx_ide_dma_on(ide_drive_t *drive)
++{
++#if defined(CONFIG_BLK_DEV_TANGO2_BMIDEDMA) || defined(CONFIG_BLK_DEV_TANGO2_ISAIDEDMA)
++	ide_hwif_t *hwif = HWIF(drive);
++
++	if (hwif->ide_dma_host_on)
++		hwif->ide_dma_host_on(drive);
++
++	printk("IDE: DMA enabled for %s%s\n",
++		drive->media == ide_disk ? "ATA DISK " : 
++		(drive->media == ide_cdrom ? "ATAPI CDROM " : ""),
++		drive->name);
++	drive->using_dma = 1;
++#else
++	drive->using_dma = 0;
++#endif
++	return 0;
++}
++
++int em86xx_ide_dma_off(ide_drive_t *drive)
++{
++#if defined(CONFIG_BLK_DEV_TANGO2_BMIDEDMA) || defined(CONFIG_BLK_DEV_TANGO2_ISAIDEDMA)
++	ide_hwif_t *hwif = HWIF(drive);
++
++	if (hwif->ide_dma_host_off)
++		hwif->ide_dma_host_off(drive);
++
++	printk("IDE: DMA disabled for %s\n", drive->name);
++#endif
++	drive->using_dma = 0;
++	return 0;
++}
++
++int em86xx_ide_dma_off_quietly(ide_drive_t *drive)
++{
++	drive->using_dma = 0;
++	return 0;
++}
++
++int em86xx_ide_dma_test_irq(ide_drive_t *drive)
++{
++	return 1;
++}
++
++int em86xx_ide_dma_bad_drive(ide_drive_t *drive)
++{
++	return 0;
++}
++
++int em86xx_ide_dma_good_drive(ide_drive_t *drive)
++{
++	return 0;
++}
++
++int em86xx_ide_dma_count(ide_drive_t *drive)
++{
++	return 0;
++}
++
++int em86xx_ide_dma_verbose(ide_drive_t *drive)
++{
++	return 0;
++}
++
++int em86xx_ide_dma_retune(ide_drive_t *drive)
++{
++	return 0;
++}
++
++int em86xx_ide_dma_lostirq(ide_drive_t *drive)
++{
++	return 0;
++}
++
++int em86xx_ide_dma_timeout(ide_drive_t *drive)
++{
++	return 0;
++}
++
++//
++// helper functions
++//
++
++#if defined(CONFIG_BLK_DEV_TANGO2_BMIDEDMA) || defined(CONFIG_BLK_DEV_TANGO2_ISAIDEDMA)
++// clean or invalidate every buffer head in request queue
++void em86xx_ide_dma_cache(struct request *rq, int read)
++{
++    struct buffer_head *bh = rq->bh;
++
++    do {
++#ifdef CONFIG_NONCOHERENT_IO
++	    if (!is_physical((u32)bh->b_data)) {
++		    if (read != 0)
++			    dma_cache_inv((unsigned long)bh->b_data, bh->b_size);
++		    else
++			    dma_cache_wback((unsigned long)bh->b_data, bh->b_size);
++	    }
++#endif
++    } while ((bh = bh->b_reqnext) != NULL);
++}
++#endif
++
++int em86xx_ide_config_drive_for_dma(ide_drive_t *drive, int mode)
++{
++	ide_hwif_t *hwif = HWIF(drive);
++#if defined(CONFIG_BLK_DEV_TANGO2_BMIDEDMA) || defined(CONFIG_BLK_DEV_TANGO2_ISAIDEDMA)
++	int config_allows_dma = 0;
++	struct hd_driveid *id = drive->id;
++	int speed;
++
++	// disable DMA for CDROM by default
++	if (drive->media == ide_disk || drive->media == ide_cdrom)
++		config_allows_dma = 1;
++
++	if (id && (id->capability & 1) && hwif->autodma && config_allows_dma) {
++		speed = ide_dma_speed(drive, mode);
++
++		/* For CDROM, we do the max. MDMA mode 2 */
++//		if ((speed > XFER_MW_DMA_2) && (drive->media == ide_cdrom))
++//			speed = XFER_MW_DMA_2;
++
++		if (speed >= XFER_MW_DMA_0) {
++			if (hwif->speedproc)
++				hwif->speedproc(drive, speed);
++			ide_config_drive_speed(drive, speed);
++			return hwif->ide_dma_on(drive);
++		}
++	}
++#endif
++
++	return hwif->ide_dma_off_quietly(drive);
++}
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_ide.h linuxmips-2.4.30/drivers/ide/tango2/em86xx_ide.h
+--- linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_ide.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/tango2/em86xx_ide.h	2007-05-08 10:41:54.000000000 -0700
+@@ -0,0 +1,54 @@
++/*
++ * driver/ide/em86xx/em86xx_ide.h
++ * 
++ * EM86XX IDE driver common code
++ *
++ * by Ho Lee March 4, 2003
++ */
++
++#ifndef __EM86XX_IDE_H
++#define __EM86XX_IDE_H
++
++#include <asm/tango2/rmdefs.h>
++
++/* If bounce buffer is used, use it in non-cached region */
++//#define EM86XX_BOUNCE_BUFFER_NOCACHE
++
++// Basic I/O
++void em86xx_ide_OUTB(u8 data, unsigned long port);
++void em86xx_ide_OUTW(u16 data, unsigned long port);
++void em86xx_ide_OUTBSYNC(ide_drive_t *drive, u8 data, unsigned long port);
++u8 em86xx_ide_INB(unsigned long port);
++u16 em86xx_ide_INW(unsigned long port);
++void em86xx_ide_INSW(unsigned long port, void *addr, u32 count);
++void em86xx_ide_OUTSW(unsigned long port, void *addr, u32 count);
++
++// DMA handlers
++int em86xx_ide_dma_on(ide_drive_t *drive);
++int em86xx_ide_dma_off(ide_drive_t *drive);
++int em86xx_ide_dma_off_quietly(ide_drive_t *drive);
++int em86xx_ide_dma_test_irq(ide_drive_t *drive);
++int em86xx_ide_dma_bad_drive(ide_drive_t *drive);
++int em86xx_ide_dma_good_drive(ide_drive_t *drive);
++int em86xx_ide_dma_count(ide_drive_t *drive);
++int em86xx_ide_dma_verbose(ide_drive_t *drive);
++int em86xx_ide_dma_retune(ide_drive_t *drive);
++int em86xx_ide_dma_lostirq(ide_drive_t *drive);
++int em86xx_ide_dma_timeout(ide_drive_t *drive);
++
++// helper functions
++void em86xx_ide_dma_cache(struct request *rq, int read);
++int em86xx_ide_config_drive_for_dma(ide_drive_t *drive, int mode);
++
++#ifdef CONFIG_TANGO2
++static inline int is_physical(unsigned long addr)
++{
++#ifdef CONFIG_SD_CDROM_DIRECT_DMA
++	return((addr < KSEG0) ? 1 : 0);
++#else
++	return(0);
++#endif
++}
++#endif
++
++#endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_isa.c linuxmips-2.4.30/drivers/ide/tango2/em86xx_isa.c
+--- linuxmips-2.4.30.ref/drivers/ide/tango2/em86xx_isa.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/tango2/em86xx_isa.c	2007-05-08 10:41:54.000000000 -0700
+@@ -0,0 +1,852 @@
++/*
++ * driver/ide/tango2/em86xx_isa.c
++ * 
++ * TANGO2 ISA IDE driver
++ *
++ * by Ho Lee March 4, 2003
++ * CD-ROM DMA implemented by Ho Lee 2003/09/18
++ */
++
++/*
++ 	CDROM DMA transfer
++		For ATA DMA transfer, DMA handler register "handler" and sends 
++		read or write command to IDE device. But for CDROM, DMA handler
++		doesn't send any command to the device, and it can not register
++		handler to finish the transfer. DMA handler is called in the 
++		middle of transfer.
++*/
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <asm/io.h>
++#include <linux/ide.h>
++#include <asm/tango2/tango2api.h>
++#include "em86xx_ide.h"
++
++#ifdef MODULE
++#include <linux/module.h>
++MODULE_AUTHOR("Craig Qu");
++MODULE_DESCRIPTION(" Tango2 ISA IDE driver");
++MODULE_LICENSE("GPL");
++#endif
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++extern int tango2_isaide_irq_map(void);
++extern int tango2_isaide_enabled(void);
++extern int tango2_isaide_cs_select(void);
++extern int tango2_isaide_timing_slot(void);
++#endif
++
++// in ide.c
++void ide_intr(int irq, void *dev_id, struct pt_regs *regs);
++
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDEDMA
++#define EM86XX_ISAIDE_DMA_MERGE_BH
++#define EM86XX_ISAIDE_DMA_BOUNCE_BUF
++
++static int g_sbox_port_read = -1, g_sbox_port_write = -1;
++static unsigned int g_regbase_read, g_regbase_write;
++static int g_irq_read, g_irq_write;
++
++// function prototypes
++static int em86xx_isaide_dma_read(ide_drive_t *drive);
++static int em86xx_isaide_dma_write(ide_drive_t *drive);
++static int em86xx_isaide_dma_begin(ide_drive_t *drive);
++static int em86xx_isaide_dma_end(ide_drive_t *drive);
++static int em86xx_isaide_dma_check(ide_drive_t *drive);
++static int em86xx_isaide_dma_host_on(ide_drive_t *drive);
++static int em86xx_isaide_dma_host_off(ide_drive_t *drive);
++static int em86xx_isaide_dma_lostirq(ide_drive_t *drive);
++static int em86xx_isaide_dma_timeout(ide_drive_t *drive);
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDETIMING
++static void em86xx_isaide_tune_chipset_drive(int drive, int speed, int verbose);
++static int em86xx_isaide_tune_chipset(ide_drive_t *drive, u8 speed);
++static unsigned long get_pb_ide_timing(unsigned int sysclk, int mode);
++#endif
++
++static int em86xx_isaide_rwdma(ide_drive_t *drive, int read, struct request *rq);
++static void em86xx_isaide_mbus_intr(int irq, void *arg);
++static int em86xx_isaide_dma_end_io(ide_drive_t *drive);
++static ide_startstop_t em86xx_isaide_dma_intr(ide_drive_t *drive);
++
++// Misc
++static struct request *crq = NULL;
++static int crq_ntransfer = 0;
++
++#ifdef EM86XX_ISAIDE_DMA_BOUNCE_BUF
++#define EM86XX_ISAIDE_DMA_BOUNCE_BUF_ORDER		(19 - PAGE_SHIFT)	// maximum = 128 sectors = 2^7 sectors = 2^7 * 2^9 = 2^16
++static unsigned char *g_bounce_buf = NULL;
++#endif
++#endif
++
++//
++// data structure initialization
++//
++
++void em86xx_isaide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port, ide_ioreg_t ctrl_port, int *irq)
++{
++	int i;
++	ide_ioreg_t reg;
++
++	memset(hw, 0, sizeof(*hw));
++
++	// setup io_ports
++	for (i = IDE_DATA_OFFSET, reg = data_port; i <= IDE_STATUS_OFFSET; i++) {
++		hw->io_ports[i] = reg;
++		reg += 4;
++	}
++
++	hw->io_ports[IDE_CONTROL_OFFSET] = ctrl_port;
++	hw->dma = NO_DMA;
++
++	if (irq) {
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++		*irq = tango2_isaide_irq_map();
++#else
++		*irq = IRQ_IDE;
++#endif
++	}
++}
++
++//
++// initialize IDE driver
++//
++
++int __init em86xx_isaide_init(void)
++{
++	int index, i;
++	ide_hwif_t *hwif;
++	hw_regs_t hw;
++#ifdef MODULE
++        ide_drive_t *drive = NULL;
++#endif
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	if (tango2_isaide_enabled() == 0)
++		return 0;
++	else
++		em86xx_isaide_init_hwif_ports(&hw, REG_BASE_host_interface_ISAIDE(tango2_isaide_cs_select()), 0, &hw.irq);
++#else
++	em86xx_isaide_init_hwif_ports(&hw, REG_BASE_host_interface_ISAIDE, 0, &hw.irq);
++#endif
++       index = ide_register_hw(&hw, NULL);
++	printk("SMP863x ISA IDE activated as ide%d.\n", index);
++
++	// initialize ide_hwifs data structure
++	// supports only one interface
++	for (i = index; i < index + 1; ++i) {
++		// register DMA handler
++		hwif = &ide_hwifs[i];
++		hwif->OUTB = em86xx_ide_OUTB;
++		hwif->OUTW = em86xx_ide_OUTW;
++		hwif->OUTBSYNC = em86xx_ide_OUTBSYNC;
++		hwif->INB = em86xx_ide_INB;
++		hwif->INW = em86xx_ide_INW;
++		hwif->INSW = em86xx_ide_INSW;
++		hwif->OUTSW = em86xx_ide_OUTSW;
++		hwif->rqsize = 16;
++	    if (!noautodma) {
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDEDMA
++		hwif->autodma = 1;
++		hwif->atapi_dma = 1;
++		hwif->ultra_mask = 0x00;	// disable all Ultra DMA
++		hwif->mwdma_mask = 0x07;	// enable all Multi-word DMA
++		hwif->swdma_mask = 0x80;	// disable all Single-word DMA
++
++		hwif->ide_dma_read = em86xx_isaide_dma_read;
++		hwif->ide_dma_write = em86xx_isaide_dma_write;
++		hwif->ide_dma_begin = em86xx_isaide_dma_begin;
++		hwif->ide_dma_end = em86xx_isaide_dma_end;
++		hwif->ide_dma_check = em86xx_isaide_dma_check;
++		hwif->ide_dma_on = em86xx_ide_dma_on;
++		hwif->ide_dma_off = em86xx_ide_dma_off;
++		hwif->ide_dma_off_quietly = em86xx_ide_dma_off_quietly;
++		hwif->ide_dma_test_irq = em86xx_ide_dma_test_irq;
++		hwif->ide_dma_host_on = em86xx_isaide_dma_host_on;
++		hwif->ide_dma_host_off = em86xx_isaide_dma_host_off;
++		hwif->ide_dma_bad_drive = em86xx_ide_dma_bad_drive;
++		hwif->ide_dma_good_drive = em86xx_ide_dma_good_drive;
++		hwif->ide_dma_count = em86xx_ide_dma_count;
++		hwif->ide_dma_verbose = em86xx_ide_dma_verbose;
++		hwif->ide_dma_retune = em86xx_ide_dma_retune;
++		hwif->ide_dma_lostirq = em86xx_isaide_dma_lostirq;
++		hwif->ide_dma_timeout = em86xx_isaide_dma_timeout;
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDETIMING
++		hwif->speedproc = em86xx_isaide_tune_chipset;
++#endif
++#endif
++	    }
++	}
++
++	if (!noautodma) {
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDEDMA
++#ifdef EM86XX_ISAIDE_DMA_BOUNCE_BUF
++	if ((g_bounce_buf = (unsigned char *) __get_free_pages(GFP_KERNEL, EM86XX_ISAIDE_DMA_BOUNCE_BUF_ORDER)) == NULL)
++		printk("EM86XX IDE : Can not allocate buffer for IDE transfer\n");
++#ifdef EM86XX_BOUNCE_BUFFER_NOCACHE
++	g_bounce_buf = (unsigned char *)KSEG1ADDR((unsigned long)g_bounce_buf);
++	printk("Bounce buffer starts at 0x%08lx\n", (unsigned long)g_bounce_buf);
++#endif
++#endif	// BOUNCE_BUF
++#endif	// EM86XX_ISAIDEDMA
++	}
++#if defined(MODULE) && defined(CONFIG_BLK_DEV_IDE)
++#ifdef HWIF_PROBE_CLASSIC_METHOD
++        probe_hwif(hwif);
++        hwif_init(hwif);
++#else
++        probe_hwif_init(hwif);
++#endif /* HWIF_PROBE_CLASSIC_METHOD */
++
++        for (i = 0; i < MAX_DRIVES; ++i) {
++                drive = &hwif->drives[i];
++                if (drive->present && !drive->dead)
++                        ide_attach_drive(drive);
++        }
++#endif
++	return 0;
++}
++
++//
++// IDE DMA processing
++//
++
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDEDMA
++
++int em86xx_isaide_dma_read(ide_drive_t *drive)
++{
++	struct request *rq;
++
++	drive->waiting_for_dma = 1;
++	rq = HWGROUP(drive)->rq;
++	// printk("em86xx_isaide_dma_read : nsect = %ld\n", rq->nr_sectors);
++	return em86xx_isaide_rwdma(drive, 1, rq);
++}
++
++int em86xx_isaide_dma_write(ide_drive_t *drive)
++{
++	struct request *rq;
++
++	drive->waiting_for_dma = 1;
++	rq = HWGROUP(drive)->rq;
++	// printk("em86xx_isaide_dma_write : nsect = %ld\n", rq->nr_sectors);
++	return em86xx_isaide_rwdma(drive, 0, rq);
++}
++
++int em86xx_isaide_dma_begin(ide_drive_t *drive)
++{
++	return(0);
++}
++
++int em86xx_isaide_dma_end(ide_drive_t *drive)
++{
++	int status;
++
++	drive->waiting_for_dma = 0;
++	status = em86xx_isaide_dma_end_io(drive);
++	return(status);
++}
++
++int em86xx_isaide_dma_lostirq(ide_drive_t *drive)
++{
++	struct request *rq = HWGROUP(drive)->rq;
++	unsigned int regbase = ((rq->cmd == READ) ? g_regbase_read : g_regbase_write);
++
++	if (em86xx_mbus_inuse(regbase) != 0) 
++		em86xx_mbus_reset(regbase, SBOX_IDEFLASH);
++	return 0;
++}
++
++int em86xx_isaide_dma_timeout(ide_drive_t *drive)
++{
++	struct request *rq = HWGROUP(drive)->rq;
++	unsigned int regbase = ((rq->cmd == READ) ? g_regbase_read : g_regbase_write);
++
++	if (em86xx_mbus_inuse(regbase) != 0) 
++		em86xx_mbus_reset(regbase, SBOX_IDEFLASH);
++	return 0;
++}
++
++int em86xx_isaide_dma_check(ide_drive_t *drive)
++{
++	return em86xx_ide_config_drive_for_dma(drive, 0);
++}
++
++int em86xx_isaide_dma_host_on(ide_drive_t *drive)
++{
++	return 0;
++}
++
++int em86xx_isaide_dma_host_off(ide_drive_t *drive)
++{
++	return 0;
++}
++
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDETIMING
++
++void em86xx_isaide_tune_chipset_drive(int drive, int speed, int verbose)
++{
++	extern unsigned long em8xxx_sys_frequency;
++	int mode = speed & 0x0f;
++	unsigned int timing;
++	
++	if (speed >= XFER_PIO_0 && speed <= XFER_PIO_4)
++		mode -= 8;
++	else if (speed >= XFER_MW_DMA_0 && speed <= XFER_MW_DMA_2)
++		mode += 5;
++	else
++		return;	
++
++	// get_pb_ide_timing() receives mode in reversed order
++	//   PIO : 7-3
++	//   Multi-word DMA : 2-0
++	mode = 7 - mode;
++	timing = get_pb_ide_timing((em8xxx_sys_frequency * 11) / (10 * 1000000), mode);
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing_slot(tango2_isaide_timing_slot()), timing);
++#else
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_timing_slot(PB_TIMINGSLOT_IDE), timing);
++#endif
++}
++
++int em86xx_isaide_tune_chipset(ide_drive_t *drive, u8 speed)
++{
++	em86xx_isaide_tune_chipset_drive(drive->select.b.unit, speed, 1);
++
++	return ide_config_drive_speed(drive, speed);
++}
++
++#endif
++
++#ifdef EM86XX_ISAIDE_DMA_MERGE_BH
++#define MBUS_LINEAR_MAX 	(0x2000 - 1)
++#endif
++
++/* Get the I/O size of given request */
++static inline int get_request_size(struct request *rq)
++{
++	unsigned int rq_size;
++	struct buffer_head *bh;
++
++	for (rq_size = 0, bh = rq->bh; bh != NULL; bh = bh->b_reqnext) 
++		rq_size += bh->b_size;
++
++	return(rq_size);
++}
++
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDEDMA
++int em86xx_isaide_request_fragment(struct request *rq)
++{
++	int ntransfer = 0;
++	struct buffer_head *bh = rq->bh;
++
++#ifdef EM86XX_ISAIDE_DMA_MERGE_BH
++	unsigned long addr;
++	unsigned int size;
++	unsigned int sector;
++
++	if (rq == crq)
++		return(crq_ntransfer);
++
++	/* Try to merge multiple BH if possible, one fragment only */
++	for (ntransfer = 0, bh = rq->bh;;) {
++		if (bh == NULL)
++			break;
++		else {
++			if (++ntransfer > 1) /* More than one fragment found */
++				break; 
++		}
++		addr = (unsigned long)bh->b_data;
++		size = bh->b_size;
++		sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((addr + size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else {	/* Merge the next BH */
++				size += bh->b_size;
++			}
++		}	
++	}
++	if (ntransfer < 2) /* This can be done with one fragment (linear or rectangular) */
++		goto done;
++
++	/* Try to merge multiple BH if possible */
++	for (ntransfer = 0, bh = rq->bh;;) {
++		if (bh == NULL)
++			break;
++		else
++			++ntransfer;
++		addr = (unsigned long)bh->b_data;
++		size = bh->b_size;
++		sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((addr + size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else if ((size + bh->b_size) > MBUS_LINEAR_MAX)
++				break;	/* Size too large */
++			else {	/* Merge the next BH */
++				size += bh->b_size;
++			}
++		}	
++	}
++#else
++	if (rq == crq)
++		return(crq_ntransfer);
++
++	do {
++		++ntransfer;
++	} while ((bh = bh->b_reqnext) != NULL);
++#endif
++
++done:
++	return ntransfer;
++}
++
++struct buffer_head *em86xx_isaide_dma_setup(int read, struct request *rq, int stop_if_fragment)
++{
++	struct buffer_head *bh = rq->bh;
++#ifdef EM86XX_ISAIDE_DMA_MERGE_BH
++	struct {
++		unsigned long addr;
++		unsigned int size;
++		unsigned int sector;
++	} transfer[2], *ptransfer;
++	unsigned int ntransfer, size;
++
++	crq = rq;
++	/* Try to merge multiple BH if possible, one fragment only */
++	for (ntransfer = size = 0, ptransfer = &transfer[0], bh = rq->bh;; ptransfer++) {
++		if (bh == NULL)
++			break;
++		else if (++ntransfer > 1)
++			break;
++
++		ptransfer->addr = (unsigned long)bh->b_data;
++		ptransfer->size = bh->b_size;
++		ptransfer->sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((ptransfer->addr + ptransfer->size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else {	/* Merge the next BH */
++				ptransfer->size += bh->b_size;
++			}
++		}	
++		size += ptransfer->size;
++	}
++	if (ntransfer < 2) /* This can be done with one fragment (linear or rectangular) */
++		goto start_transfer;
++
++	/* Try to merge multiple BH if possible */
++	for (ntransfer = size = 0, ptransfer = &transfer[0], bh = rq->bh;; ptransfer++) {
++		if (bh == NULL)
++			break;
++		else if (++ntransfer > 2)
++			break;
++
++		ptransfer->addr = (unsigned long)bh->b_data;
++		ptransfer->size = bh->b_size;
++		ptransfer->sector = bh->b_rsector;
++		for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++			if ((ptransfer->addr + ptransfer->size) != (unsigned long)bh->b_data)
++				break;	/* data is not contiguous */
++			else if ((ptransfer->size + bh->b_size) > MBUS_LINEAR_MAX)
++				break;	/* Size too large */
++			else {	/* Merge the next BH */
++				ptransfer->size += bh->b_size;
++			}
++		}	
++		size += ptransfer->size;
++	}
++
++	if ((ntransfer > 2) && (stop_if_fragment != 0)) {
++		crq_ntransfer = ntransfer;
++		return bh;
++	}
++#else
++	struct buffer_head *prevbh;
++	struct {
++		unsigned int addr;
++		unsigned int size;
++	} transfer[2], *ptransfer;
++	unsigned int ntransfer, size;
++
++	crq = rq;
++	for (prevbh = NULL, ntransfer = 0, ptransfer = transfer, size = 0; bh != NULL; prevbh = bh, bh = bh->b_reqnext) {
++		if (++ntransfer > 2) {
++			if (stop_if_fragment) {
++				crq_ntransfer = ntransfer;
++				return bh;
++			}
++			break;
++		}
++		ptransfer->addr = (unsigned int) bh->b_data;
++		ptransfer->size = bh->b_size;
++		// printk("MBUS : bh = %p, bh->next = %p, %08x, %08x\n", bh, bh->b_reqnext, ptransfer->addr, ptransfer->size);
++		++ptransfer;
++		size += bh->b_size;
++	}
++#endif
++
++start_transfer:
++	// Use DMA mode transfer
++	// Transfer starts when the IDE device is ready and asserts DMARQ signal high
++	crq_ntransfer = ntransfer;
++
++	// setup PB automode registers
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_automode_start_address, 0);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_automode_control, 0x00140000 | ((read ? 1 : 0) << 16) | (size >> 1));
++
++	// setup MBUS
++	if (ntransfer == 1) {
++#ifdef CONFIG_NONCOHERENT_IO
++		if (!is_physical(transfer[0].addr)) {
++			if (read) 
++				dma_cache_inv(transfer[0].addr, transfer[0].size);
++			else
++				dma_cache_wback_inv(transfer[0].addr, transfer[0].size);
++		}
++#endif
++		if (transfer[0].size <= MBUS_LINEAR_MAX)
++			/* Do linear transfer */
++			em86xx_mbus_setup_dma_linear(read ? g_regbase_read : g_regbase_write, SBOX_IDEFLASH,
++					is_physical(transfer[0].addr) ? transfer[0].addr : PHYSADDR(transfer[0].addr), 
++					transfer[0].size);
++		else {
++			/* Do rectangular transfer */
++			unsigned int i, horiz, lines, sz;
++			for (i = 0, horiz = 1, sz = transfer[0].size; (i < 12) && ((sz & 0x01) == 0); ++i, horiz <<= 1, sz >>= 1) 
++				;
++			lines = transfer[0].size >> i;
++			em86xx_mbus_setup_dma_rectangle(read ? g_regbase_read : g_regbase_write, SBOX_IDEFLASH,
++					is_physical(transfer[0].addr) ? transfer[0].addr : PHYSADDR(transfer[0].addr), 
++					horiz, lines, horiz);
++		}
++	} else {
++#ifdef CONFIG_NONCOHERENT_IO
++		if (read) {
++			if (!is_physical(transfer[0].addr)) 
++				dma_cache_inv(transfer[0].addr, transfer[0].size);
++			if (!is_physical(transfer[1].addr)) 
++				dma_cache_inv(transfer[1].addr, transfer[1].size);
++		} else {
++			if (!is_physical(transfer[0].addr)) 
++				dma_cache_wback_inv(transfer[0].addr, transfer[0].size);
++			if (!is_physical(transfer[1].addr)) 
++				dma_cache_wback_inv(transfer[1].addr, transfer[1].size);
++		}
++#endif
++		em86xx_mbus_setup_dma_double(read ? g_regbase_read : g_regbase_write, SBOX_IDEFLASH,
++			is_physical(transfer[0].addr) ? transfer[0].addr : PHYSADDR(transfer[0].addr), transfer[0].size,
++			is_physical(transfer[1].addr) ? transfer[1].addr : PHYSADDR(transfer[1].addr), transfer[1].size);
++	}
++
++	return bh;
++}
++
++int em86xx_isaide_rwdma(ide_drive_t *drive, int read, struct request *rq)
++{
++	int retry;
++	unsigned long cj;
++	static const int max_retry = 5;
++
++	// setup switchbox and wait for its readiness
++	if (g_sbox_port_read < 0) {
++		for (retry = 0; ((g_sbox_port_read = em86xx_mbus_alloc_dma(SBOX_IDEFLASH, 1, &g_regbase_read, &g_irq_read)) < 0) && (retry < max_retry); retry++) {
++			for (cj = jiffies + (HZ / 100); jiffies < cj;);
++		}
++		if (g_sbox_port_read < 0) { /* Failed to use DMA, use PIO instead */
++			printk("%s: failed to obtain DMA channel, use PIO instead.\n", drive->name);
++			return(1);
++		}
++	}
++	if (g_sbox_port_write < 0) {
++		for (retry = 0; ((g_sbox_port_write = em86xx_mbus_alloc_dma(SBOX_IDEFLASH, 0, &g_regbase_write, &g_irq_write)) < 0) && (retry < max_retry); retry++) {
++			for (cj = jiffies + (HZ / 100); jiffies < cj;);
++		}
++		if (g_sbox_port_write < 0) { /* Failed to use DMA, use PIO instead */
++			printk("%s: failed to obtain DMA channel, use PIO instead.\n", drive->name);
++			em86xx_mbus_free_dma(g_sbox_port_read);
++			g_sbox_port_read = -1;
++			return(1);
++		}
++	}
++
++	// setup handler
++	if (drive->media == ide_disk)
++		ide_set_handler(drive, &em86xx_isaide_dma_intr, 2 * WAIT_CMD, NULL);
++
++#ifdef EM86XX_ISAIDE_DMA_BOUNCE_BUF
++	if (em86xx_isaide_dma_setup(read, rq, 1)) {
++		// copy buffer before transfer
++		unsigned int buflen = get_request_size(rq);
++		unsigned int buf = (unsigned int) g_bounce_buf;
++
++		if (!read) {
++			struct buffer_head *bh = rq->bh;
++#if 1
++			char *data;
++			u32 size;
++			extern int mbus_memcpy(u32 dst, u32 src, u32 size);
++			
++			/* Try to merge multiple BH for copying */
++			while (bh != NULL) {
++				data = bh->b_data;
++				size = bh->b_size;
++				for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++					if ((data + size) == bh->b_data)
++						size += bh->b_size; /* Contiguous */
++					else 
++						break;
++				}
++				mbus_memcpy(PHYSADDR(buf), PHYSADDR(data), size);
++#ifdef CONFIG_NONCOHERENT_IO
++				dma_cache_inv(buf, size);
++#endif
++				buf += size;
++			}
++#else
++			do {
++				memcpy((void *) buf, bh->b_data, bh->b_size);
++				buf += bh->b_size;
++			} while ((bh = bh->b_reqnext) != NULL);
++#endif
++		}
++ 
++#ifdef CONFIG_NONCOHERENT_IO
++#ifndef EM86XX_BOUNCE_BUFFER_NOCACHE
++		dma_cache_wback_inv((unsigned long)g_bounce_buf, buflen);
++#endif
++#endif
++		// setup PB automode registers
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_automode_start_address, 0);
++		gbus_write_uint32(pGBus, REG_BASE_host_interface + PB_automode_control, 0x00140000 | ((read ? 1 : 0) << 16) | (buflen >> 1));
++
++		// setup MBUS
++		em86xx_mbus_setup_dma(read ? g_regbase_read : g_regbase_write, SBOX_IDEFLASH, PHYSADDR((unsigned long)g_bounce_buf), buflen, NULL, NULL);
++	} else
++		em86xx_ide_dma_cache(rq, read);
++#else
++	// cache control
++	em86xx_ide_dma_cache(rq, read);
++
++	// setup MBUS
++	em86xx_isaide_dma_setup(read, rq->bh, 0);
++#endif
++
++	em86xx_isaide_dma_begin(drive);
++
++	if (drive->media == ide_disk) {
++		// send IDE command
++		HWIF(drive)->OUTB(read ? (drive->addressing ? WIN_READDMA_EXT : WIN_READDMA) : (drive->addressing ? WIN_WRITEDMA_EXT : WIN_WRITEDMA), IDE_COMMAND_REG);
++	}
++
++	return 0;
++}
++#endif
++
++static void em86xx_isaide_mbus_intr(int irq, void *arg)
++{
++	int index = irq - (LOG2_CPU_HOST_MBUS_W0_INT + IRQ_CONTROLLER_IRQ_BASE);
++	struct request *rq = (struct request *) arg;
++	
++	// printk("[MBUS] ");
++
++	if (rq->bh != NULL) 
++		em86xx_isaide_dma_setup((index < 2) ? 1 : 0, rq, 0);
++}
++
++int em86xx_isaide_dma_end_io(ide_drive_t *drive)
++{
++	struct request *rq = HWGROUP(drive)->rq;
++
++	int stat = em86xx_mbus_wait(rq->cmd == READ ? g_regbase_read : g_regbase_write, SBOX_IDEFLASH);
++
++	if (stat != 0) 
++		goto done;
++
++#ifdef EM86XX_ISAIDE_DMA_BOUNCE_BUF
++	if (rq->cmd == READ) {
++		if (em86xx_isaide_request_fragment(rq) > 2) {
++			// copy buffer after transfer
++			unsigned int buf = (unsigned int) g_bounce_buf;
++			struct buffer_head *bh = rq->bh;
++#ifdef CONFIG_NONCOHERENT_IO
++#ifndef EM86XX_BOUNCE_BUFFER_NOCACHE
++			dma_cache_inv(buf, get_request_size(rq));
++#endif
++#endif
++#if 1
++			{
++				char *data;
++				u32 size;
++				extern int mbus_memcpy(u32 dst, u32 src, u32 size);
++			
++				/* Try to merge multiple BH for copying */
++				while (bh != NULL) {
++					data = bh->b_data;
++					size = bh->b_size;
++					for (bh = bh->b_reqnext; bh != NULL; bh = bh->b_reqnext) {
++						if ((data + size) == bh->b_data)
++							size += bh->b_size; /* Contiguous */
++						else 
++							break;
++					}
++					mbus_memcpy(PHYSADDR(data), PHYSADDR(buf), size);
++#ifdef CONFIG_NONCOHERENT_IO	
++					if (!is_physical((u32)data))
++						dma_cache_inv((unsigned long)data, size);
++#endif
++					buf += size;
++				}
++			}
++#else
++			do {
++				memcpy(bh->b_data, (void *) buf, bh->b_size);
++				buf += bh->b_size;
++			} while ((bh = bh->b_reqnext) != NULL);
++#endif
++		} else {
++			em86xx_ide_dma_cache(rq, 1 /* READ */);
++		}
++	}
++#else
++	if (rq->cmd == READ) 
++		em86xx_ide_dma_cache(rq, 1 /* READ */);
++#endif
++
++done:
++	/* Free up MBUS channel */
++	em86xx_mbus_free_dma(g_sbox_port_read);
++	em86xx_mbus_free_dma(g_sbox_port_write);
++	g_sbox_port_read = g_sbox_port_write = -1;
++	return((stat != 0) ? 1 : 0);
++}
++
++ide_startstop_t em86xx_isaide_dma_intr(ide_drive_t *drive)
++{
++	int i;
++	ide_hwif_t *hwif = HWIF(drive);
++	struct request *rq = HWGROUP(drive)->rq;
++
++	hwif->ide_dma_end(drive);
++
++	for (i = rq->nr_sectors; i > 0;) {
++		i -= rq->current_nr_sectors;
++		ide_end_request(drive, 1);
++	}
++
++	return ide_stopped;
++}
++
++#endif
++
++#ifdef CONFIG_BLK_DEV_TANGO2_ISAIDETIMING
++/*
++ * Calculate the peripheral bus timing needed for the register used by IDE
++ * devices.
++ */
++
++/* 
++ * The tables bellows use indices as Multi-word DMA 2, Multi-word DMA 1,
++ * Multi-word DMA 0, PIO 4, PIO 3, PIO 2, PIO 1, and PIO 0 (From 0 to 7, 
++ * respectively).
++ */
++
++/* For storing value pair */
++typedef struct {
++	unsigned char x;
++	unsigned char y;
++} value_pair;
++
++/* Table used for calculate Ta and Tb */
++static const value_pair tab_values[] = {
++	{3,0}, {5,0}, {7,2}, {3,0}, {5,0}, {5,0}, {7,2}, {10,4}
++};
++
++/* Table used for calculate Tc */
++static const value_pair tc_values[] = {
++	{13,8}, {19,11}, {60,41}, {10,5}, {12,6}, {14,8}, {17,11}, {23,15}
++};
++
++/* Table used for calculate Td */
++static const value_pair td_values[] = {
++	{1,100}, {1,100}, {3,200}, {1,100}, {1,100}, {1,100}, {3,200}, {5,250}
++};
++
++/* 
++ * Calculate the required timing for setting up peripheral bus timing register.
++ *
++ * Input: sysclk = system clock rate (in MHz)
++ *        mode = IDE mode (0-2: Multiword DMA mode 2-0, 3-7: PIO mode 4-0)
++ * Return: 0 = Error
++ *         else = value for setting up the timing register
++ */
++unsigned long get_pb_ide_timing(unsigned int sysclk, int mode)
++{
++	unsigned char ta = 0;
++	unsigned char tb = 0;
++	unsigned char tc = 0;
++	unsigned char td = 0;
++	long temp = 0;
++	const value_pair *val_ptr = (const value_pair *)0;
++
++	/* The formula is only effective between 100-240MHz */
++	if ((sysclk < 100) && (sysclk > 240))
++		return(0);
++	else if ((mode < 0) && (mode > 7)) /* Mode index is 0-7 only */
++		return(0);
++
++	/* (x, y) = tab_values[mode] */
++	/* (Ta + Tb) = Temp = (ceiling((sysclk - 100) * x / 140) + y) */
++	/* Ta = ceiling(Temp / 2) */
++	/* Tb = (Temp / 2) */
++	val_ptr = &tab_values[mode];
++	temp = ((sysclk - 100) * val_ptr->x) / 140;
++	if ((temp * 140) < ((sysclk - 100) * val_ptr->x))
++		temp++;
++	temp += val_ptr->y;
++	tb = ta = (unsigned char)((temp >> 1) & 0xff);
++	if (temp & 0x1)
++		ta++;
++
++	/* (x, y) = tc_values[mode] */
++	/* Tc = (ceiling((sysclk - 100) * x / 140) + y) */
++	val_ptr = &tc_values[mode];
++	tc = (unsigned char)(((sysclk - 100) * val_ptr->x) / 140) & 0xff;
++	if ((tc * 140) < ((sysclk - 100) * val_ptr->x))
++		tc++;
++	tc += val_ptr->y;
++
++	/* (x, y) = td_values[mode] */
++	/* Td = ceiling(sysclk + y - 400) * x / y) */
++	val_ptr = &td_values[mode];
++	if ((temp = (sysclk + val_ptr->y) - 400) < 0)
++		td = 0; /* It's possible that Td < 0, so we set it to 0 */
++	else {
++		td = (unsigned char)(((temp * val_ptr->x) / val_ptr->y) & 0xff);
++		if ((td * val_ptr->y) < (temp * val_ptr->x))
++			td++;
++	}
++	return((td << 24) | (tc << 16) | (tb << 8) | ta);
++}
++
++#endif
++
++void __exit em86xx_isaide_exit(void)
++{
++#ifdef EM86XX_ISAIDE_DMA_BOUNCE_BUF
++#ifdef EM86XX_BOUNCE_BUFFER_NOCACHE
++        g_bounce_buf = (unsigned char *)em86xx_to_caddr((unsigned long)g_bounce_buf);
++#endif
++        free_pages((unsigned long)g_bounce_buf, EM86XX_ISAIDE_DMA_BOUNCE_BUF_ORDER);
++#endif
++        return;
++}
++
++#ifdef MODULE
++module_init(em86xx_isaide_init);
++module_exit(em86xx_isaide_exit);
++#endif
++
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/drivers/ide/tango2/Makefile linuxmips-2.4.30/drivers/ide/tango2/Makefile
+--- linuxmips-2.4.30.ref/drivers/ide/tango2/Makefile	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/drivers/ide/tango2/Makefile	2007-05-08 10:41:54.000000000 -0700
+@@ -0,0 +1,11 @@
++O_TARGET := idedriver-tango2.o
++
++obj-y :=
++obj-m :=
++
++obj-$(CONFIG_BLK_DEV_TANGO2_ISAIDE) += em86xx_ide.o em86xx_isa.o
++obj-$(CONFIG_BLK_DEV_TANGO2_BMIDE) += em86xx_ide.o em86xx_bm.o
++
++EXTRA_CFLAGS	:= -I../
++
++include $(TOPDIR)/Rules.make
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/ide.h linuxmips-2.4.30/include/asm-mips/ide.h
+--- linuxmips-2.4.30.ref/include/asm-mips/ide.h	2003-07-15 08:08:33.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/ide.h	2007-05-08 10:41:54.000000000 -0700
+@@ -15,6 +15,7 @@
+ #include <linux/config.h>
+ #include <asm/io.h>
+ 
++#ifndef CONFIG_TANGO2 
+ #ifndef MAX_HWIFS
+ # ifdef CONFIG_BLK_DEV_IDEPCI
+ #define MAX_HWIFS	10
+@@ -41,13 +42,52 @@
+ {
+ 	return ide_ops->ide_default_io_base(index);
+ }
+-
+ static inline void ide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port,
+ 	ide_ioreg_t ctrl_port, int *irq)
+ {
+ 	ide_ops->ide_init_hwif_ports(hw, data_port, ctrl_port, irq);
+ }
+ 
++#else
++#ifndef MAX_HWIFS
++#define MAX_HWIFS	4	
++#endif
++
++struct ide_ops {
++	int (*ide_default_irq)(ide_ioreg_t base);
++	ide_ioreg_t (*ide_default_io_base)(int index);
++	void (*ide_init_hwif_ports)(hw_regs_t *hw, ide_ioreg_t data_port,
++	                            ide_ioreg_t ctrl_port, int *irq);
++};
++
++extern struct ide_ops *ide_ops;
++
++#define ide_default_io_base(i)          ((ide_ioreg_t)0)
++#define ide_default_irq(b)              (0)
++
++
++static inline void ide_init_hwif_ports(hw_regs_t *hw, ide_ioreg_t data_port, ide_ioreg_t ctrl_port, int *irq)
++{
++
++#ifdef CONFIG_BLK_DEV_IDEPCI
++    int i;
++    ide_ioreg_t reg;
++
++    // setup io_ports
++    for (i = IDE_DATA_OFFSET, reg = data_port; i <= IDE_STATUS_OFFSET; i++) {
++        hw->io_ports[i] = reg;
++        reg += 1;
++    }
++    if (ctrl_port)
++        hw->io_ports[IDE_CONTROL_OFFSET] = (ide_ioreg_t) ctrl_port;
++    if (irq != NULL)
++        *irq = 0;
++    hw->io_ports[IDE_IRQ_OFFSET] = 0;
++#endif
++}
++#endif
++
++
+ static __inline__ void ide_init_default_hwifs(void)
+ {
+ #ifndef CONFIG_BLK_DEV_IDEPCI
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/cdrom.h linuxmips-2.4.30/include/linux/cdrom.h
+--- linuxmips-2.4.30.ref/include/linux/cdrom.h	2001-11-05 23:56:14.000000000 -0800
++++ linuxmips-2.4.30/include/linux/cdrom.h	2007-05-08 10:41:54.000000000 -0700
+@@ -287,6 +287,10 @@
+ 	unsigned char		data_direction;
+ 	int			quiet;
+ 	int			timeout;
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++	int                     do_dma;         /* Try to use DMA */
++	int                     dma_error;      /* A DMA_specific error occurred */
++#endif
+ 	void			*reserved[1];
+ };
+ 
+@@ -465,7 +469,7 @@
+ #define GPCMD_RESERVE_RZONE_TRACK	    0x53
+ #define GPCMD_SCAN			    0xba
+ #define GPCMD_SEEK			    0x2b
+-#define GPCMD_SEND_DVD_STRUCTURE	    0xad
++#define GPCMD_SEND_DVD_STRUCTURE	    0xbf
+ #define GPCMD_SEND_EVENT		    0xa2
+ #define GPCMD_SEND_KEY			    0xa3
+ #define GPCMD_SEND_OPC			    0x54
+@@ -743,10 +747,21 @@
+     	char name[20];                  /* name of the device type */
+ /* per-device flags */
+         __u8 sanyo_slot		: 2;	/* Sanyo 3 CD changer support */
+-        __u8 reserved		: 6;	/* not used yet */
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++	__u8 dma_mode           : 2;    /* See below */
++	__u8 reserved           : 4;    /* not used yet */
++#else
++	__u8 reserved           : 6;    /* not used yet */
++#endif
+ 	struct cdrom_write_settings write;
+ };
+ 
++#ifdef CONFIG_SD_CDROM_DMAPACKET
++#define CDROM_DMA_MULTI         0       /* Multiframe DMA (default) */
++#define CDROM_DMA_SINGLE        1       /* Single frame DMA */
++#define CDROM_DMA_NONE          2       /* Multiframe PIO */
++#endif
++
+ struct cdrom_device_ops {
+ /* routines */
+ 	int (*open) (struct cdrom_device_info *, int);
+@@ -1053,6 +1068,42 @@
+ 	__u8 reserved3;
+ } rpc_state_t;
+ 
++struct event_header {
++        __u16 data_len;
++#if defined(__BIG_ENDIAN_BITFIELD)
++        __u8 nea                : 1;
++        __u8 reserved1          : 4;
++        __u8 notification_class : 3;
++#elif defined(__LITTLE_ENDIAN_BITFIELD)
++        __u8 notification_class : 3;
++        __u8 reserved1          : 4;
++        __u8 nea                : 1;
++#endif
++        __u8 supp_event_class;
++};
++
++struct media_event_desc {
++#if defined(__BIG_ENDIAN_BITFIELD)
++        __u8 reserved1          : 4;
++        __u8 media_event_code   : 4;
++        __u8 reserved2          : 6;
++        __u8 media_present      : 1;
++        __u8 door_open          : 1;
++#elif defined(__LITTLE_ENDIAN_BITFIELD)
++        __u8 media_event_code   : 4;
++        __u8 reserved1          : 4;
++        __u8 door_open          : 1;
++        __u8 media_present      : 1;
++        __u8 reserved2          : 6;
++#endif
++        __u8 start_slot;
++        __u8 end_slot;
++};
++
++extern int cdrom_get_media_event(struct cdrom_device_info *cdi, struct media_event_desc *med);
++
++
++
+ #endif  /* End of kernel only stuff */ 
+ 
+ #endif  /* _LINUX_CDROM_H */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/fs.h linuxmips-2.4.30/include/linux/fs.h
+--- linuxmips-2.4.30.ref/include/linux/fs.h	2005-03-18 04:13:31.000000000 -0800
++++ linuxmips-2.4.30/include/linux/fs.h	2007-05-08 10:41:54.000000000 -0700
+@@ -247,8 +247,8 @@
+ 	/* First cache line: */
+ 	struct buffer_head *b_next;	/* Hash queue list */
+ 	unsigned long b_blocknr;	/* block number */
+-	unsigned short b_size;		/* block size */
+-	unsigned short b_list;		/* List that this buffer appears */
++	unsigned long b_size;		/* block size */
++	unsigned long b_list;		/* List that this buffer appears */
+ 	kdev_t b_dev;			/* device (B_FREE = free) */
+ 
+ 	atomic_t b_count;		/* users using this block */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1006.ide.patch linuxmips-2.4.30/README.1006.ide.patch
+--- linuxmips-2.4.30.ref/README.1006.ide.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1006.ide.patch	2007-05-08 10:46:18.000000000 -0700
+@@ -0,0 +1,20 @@
++Feature:
++--------
++Peripheral bus IDE and Bus mastering IDE support for SMP863x.
++
++Prerequisite patch numbers:
++---------------------------
++0000
++1000
++1005
++
++Primary author:
++---------------
++Craig Qu/YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

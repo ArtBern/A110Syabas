@@ -1,0 +1,4511 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/config-shared.in linuxmips-2.4.30/arch/mips/config-shared.in
+--- linuxmips-2.4.30.ref/arch/mips/config-shared.in	2005-01-30 00:01:26.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/config-shared.in	2007-06-20 14:01:27.000000000 -0700
+@@ -19,6 +19,7 @@
+ #
+ mainmenu_option next_comment
+ comment 'Machine selection'
++dep_bool 'Support for SigmaDesigns Tango2 board  (EXPERIMENTAL)' CONFIG_TANGO2 $CONFIG_EXPERIMENTAL
+ dep_bool 'Support for Acer PICA 1 chipset (EXPERIMENTAL)' CONFIG_ACER_PICA_61 $CONFIG_EXPERIMENTAL
+ dep_bool 'Support for Alchemy Bosporus board' CONFIG_MIPS_BOSPORUS $CONFIG_MIPS32
+ dep_bool 'Support for FIC Multimedia Player board' CONFIG_MIPS_FICMMP $CONFIG_MIPS32
+@@ -605,6 +606,10 @@
+ fi
+ endmenu
+ 
++if [ "$CONFIG_TANGO2" = "y" ]; then
++   source arch/mips/config-tango2.in
++fi
++
+ mainmenu_option next_comment
+ comment 'CPU selection'
+ 
+@@ -735,7 +740,8 @@
+ #
+ mainmenu_option next_comment
+ comment 'General setup'
+-if [ "$CONFIG_ACER_PICA_61" = "y" -o \
++if [ "$CONFIG_TANGO2" = "y" -o \
++     "$CONFIG_ACER_PICA_61" = "y" -o \
+      "$CONFIG_CASIO_E55" = "y" -o \
+      "$CONFIG_DDB5074" = "y" -o \
+      "$CONFIG_DDB5476" = "y" -o \
+@@ -891,16 +897,18 @@
+   string 'Initial kernel command string' CONFIG_CMDLINE ""
+ fi
+ 
+-if [ "$CONFIG_SOC_AU1X00" = "y" ]; then
++if [ "$CONFIG_SOC_AU1X00" = "y" -o "$CONFIG_TANGO2" = "y" ]; then
+    bool 'Power Management support' CONFIG_PM
+ fi
+ endmenu
+ 
+ source drivers/mtd/Config.in
+ 
++if [ ! "$CONFIG_TANGO2" = "y" ]; then
+ source drivers/parport/Config.in
+ 
+ source drivers/pnp/Config.in
++fi
+ 
+ source drivers/block/Config.in
+ if [ "$CONFIG_BLK_DEV_INITRD" = "y" ]; then
+@@ -913,13 +921,17 @@
+    endmenu
+ fi
+ 
++if [ ! "$CONFIG_TANGO2" = "y" ]; then
+ source drivers/md/Config.in
++fi
+ 
+ if [ "$CONFIG_NET" = "y" ]; then
+    source net/Config.in
+ fi
+ 
++if [ ! "$CONFIG_TANGO2" = "y" ]; then
+ source drivers/telephony/Config.in
++fi
+ 
+ mainmenu_option next_comment
+ comment 'ATA/IDE/MFM/RLL support'
+@@ -943,7 +955,9 @@
+ fi
+ endmenu
+ 
++if [ ! "$CONFIG_TANGO2" = "y" ]; then
+ source drivers/message/fusion/Config.in
++fi
+ 
+ source drivers/ieee1394/Config.in
+ 
+@@ -965,7 +979,9 @@
+    endmenu
+ fi
+ 
++if [ ! "$CONFIG_TANGO2" = "y" ]; then
+ source net/ax25/Config.in
++fi
+ 
+ source net/irda/Config.in
+ 
+@@ -1001,7 +1017,9 @@
+ 
+ source fs/Config.in
+ 
++if [ ! "$CONFIG_TANGO2" = "y" ]; then
+ source drivers/media/Config.in
++fi
+ 
+ if [ "$CONFIG_VT" = "y" ]; then
+    mainmenu_option next_comment
+@@ -1021,6 +1039,7 @@
+    endmenu
+ fi
+ 
++if [ ! "$CONFIG_TANGO2" = "y" ]; then
+ mainmenu_option next_comment
+ comment 'Sound'
+ 
+@@ -1029,6 +1048,7 @@
+    source drivers/sound/Config.in
+ fi
+ endmenu
++fi
+ 
+ source drivers/usb/Config.in
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/config-tango2.in linuxmips-2.4.30/arch/mips/config-tango2.in
+--- linuxmips-2.4.30.ref/arch/mips/config-tango2.in	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/config-tango2.in	2007-06-20 14:02:19.000000000 -0700
+@@ -0,0 +1,67 @@
++#
++# Tango2 specific configuration
++#
++mainmenu_option next_comment
++comment 'TANGO2 specific configuration'
++
++choice '  TANGO2 environment' \
++	"Quickturn	CONFIG_QUICKTURN \
++	 SMP863x        CONFIG_TANGO2_SMP863X" SMP863x
++
++if [ "$CONFIG_TANGO2_SMP863X" = "y" ]; then
++choice '  SMP863x chip' \
++	"ES1		CONFIG_TANGO2_ES1 \
++	ES2		CONFIG_TANGO2_ES2 \
++	ES3		CONFIG_TANGO2_ES3 \
++	ES4-5		CONFIG_TANGO2_ES4 \
++	ES6+		CONFIG_TANGO2_ES6" ES6
++fi
++
++if [ "$CONFIG_QUICKTURN" = "y" ]; then
++	define_bool CONFIG_TANGO2_ES3 y
++fi
++
++hex 'Memory size' CONFIG_TANGO2_MEMSIZE	0x02000000
++
++#define_bool CONFIG_TANGO2_HACK	y
++int 'HZ Value (100-1000)' CONFIG_TANGO2_HZ_VALUE 1000
++
++define_bool CONFIG_TANGO2_USE_CPU_CLOCK n
++bool 'Use zboot pflash signature block' CONFIG_TANGO2_SIG_BLOCK
++if [ "$CONFIG_TANGO2_SIG_BLOCK" = "n" ]; then
++	bool 'Use pflash xenv block' CONFIG_TANGO2_XENV
++fi
++
++define_bool CONFIG_IRQ_CPU y
++define_bool CONFIG_NEW_IRQ y
++define_bool CONFIG_NEW_TIME_C y
++define_bool CONFIG_PC_KEYB y
++define_bool CONFIG_NONCOHERENT_IO y
++# disable almost everything at first...!
++# define_bool CONFIG_SCSI n
++define_bool CONFIG_ARC_CONSOLE n
++#  define_bool CONFIG_NET n
++#  define_bool CONFIG_NETDEVICES n
++define_bool CONFIG_SOUND n
++# under char category
++#define_bool CONFIG_VT n
++#define_bool CONFIG_SERIAL y
++#define_bool CONFIG_SERIAL_CONSOLE y
++define_bool CONFIG_SERIAL_MANY_PORTS n
++define_bool CONFIG_MOUSE n
++define_bool CONFIG_DS1286 n
++# under console category
++define_bool CONFIG_SGI_NEWPORT_CONSOLE n
++# under fs category
++#define_bool CONFIG_AUTOFS_FS n
++#define_bool CONFIG_AUTOFS4_FS n
++#define_bool CONFIG_EXT3_FS n
++#define_bool CONFIG_ISO9660_FS n
++#  define_bool CONFIG_PARTITION_ADVANCED n
++
++if [ "$CONFIG_TANGO2_ES4" = "y" -o "$CONFIG_TANGO2_ES6" = "y" ]; then
++	bool 'Map DRAM1 with TLB (\"no\" for CPU remap instead)'  CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++fi
++ 
++endmenu
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/defconfig linuxmips-2.4.30/arch/mips/defconfig
+--- linuxmips-2.4.30.ref/arch/mips/defconfig	2005-03-18 04:13:21.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/defconfig	2007-06-20 14:01:27.000000000 -0700
+@@ -20,6 +20,7 @@
+ #
+ # Machine selection
+ #
++CONFIG_TANGO2=y
+ # CONFIG_ACER_PICA_61 is not set
+ # CONFIG_MIPS_BOSPORUS is not set
+ # CONFIG_MIPS_MIRAGE is not set
+@@ -64,7 +65,7 @@
+ # CONFIG_NEC_EAGLE is not set
+ # CONFIG_OLIVETTI_M700 is not set
+ # CONFIG_NINO is not set
+-CONFIG_SGI_IP22=y
++# CONFIG_SGI_IP22 is not set
+ # CONFIG_SGI_IP27 is not set
+ # CONFIG_SIBYTE_SB1xxx_SOC is not set
+ # CONFIG_SNI_RM200_PCI is not set
+@@ -92,7 +93,7 @@
+ #
+ # CPU selection
+ #
+-# CONFIG_CPU_MIPS32 is not set
++CONFIG_CPU_MIPS32=y
+ # CONFIG_CPU_MIPS64 is not set
+ # CONFIG_CPU_R3000 is not set
+ # CONFIG_CPU_TX39XX is not set
+@@ -100,7 +101,7 @@
+ # CONFIG_CPU_R4300 is not set
+ # CONFIG_CPU_R4X00 is not set
+ # CONFIG_CPU_TX49XX is not set
+-CONFIG_CPU_R5000=y
++# CONFIG_CPU_R5000 is not set
+ # CONFIG_CPU_R5432 is not set
+ # CONFIG_CPU_R6000 is not set
+ # CONFIG_CPU_NEVADA is not set
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/cpu-probe.c linuxmips-2.4.30/arch/mips/kernel/cpu-probe.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/cpu-probe.c	2005-04-06 17:37:19.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/kernel/cpu-probe.c	2007-06-20 14:01:27.000000000 -0700
+@@ -34,6 +34,7 @@
+ 		".set\tmips0");
+ }
+ 
++#ifdef CONFIG_SOC_AU1X00
+ /* The Au1xxx wait is available only if using 32khz counter or
+  * external timer source, but specifically not CP0 Counter. */
+ static void au1k_wait(void)
+@@ -54,6 +55,7 @@
+ 		".set mips0\n\t"
+ 		: : "r" (addr));
+ }
++#endif
+ 
+ static inline void check_wait(void)
+ {
+@@ -91,6 +93,7 @@
+ 		cpu_wait = r4k_wait;
+ 		printk(" available.\n");
+ 		break;
++#ifdef CONFIG_SOC_AU1X00
+ 	case CPU_AU1000:
+ 	case CPU_AU1100:
+ 	case CPU_AU1500:
+@@ -105,6 +108,7 @@
+ 			printk(" unavailable.\n");
+ 		}
+ 		break;
++#endif
+ 	default:
+ 		printk(" unavailable.\n");
+ 		break;
+@@ -472,6 +476,12 @@
+ 		/* Probe for L2 cache */
+ 		c->scache.flags &= ~MIPS_CACHE_NOT_PRESENT;
+ 		break;
++#ifdef CONFIG_TANGO2
++	case PRID_IMP_SIGMADESIGNS:
++		c->cputype = CPU_4KEC;
++		c->isa_level = MIPS_CPU_ISA_M32;
++		break;
++#endif
+ 	default:
+ 		c->cputype = CPU_UNKNOWN;
+ 		break;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/head.S linuxmips-2.4.30/arch/mips/kernel/head.S
+--- linuxmips-2.4.30.ref/arch/mips/kernel/head.S	2004-11-22 05:38:23.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/kernel/head.S	2007-06-20 14:01:27.000000000 -0700
+@@ -29,11 +29,26 @@
+ #include <asm/stackframe.h>
+ 
+ 		.text
++#ifdef CONFIG_TANGO2
++		/*
++		 * Kernel entry point
++		 */
++		NESTED(kernel_entry, 16, sp)
++		j	old_kernel_entry
++		END(kernel_entry)
++
++		/*
++		 * Reserved space for exception handlers.
++		 * Necessary for machines which link their kernels at KSEG0.
++		 */
++		.fill	0x400 - 0x8
++#else
+ 		/*
+ 		 * Reserved space for exception handlers.
+ 		 * Necessary for machines which link their kernels at KSEG0.
+ 		 */
+ 		.fill	0x400
++#endif
+ 
+ 		/* The following two symbols are used for kernel profiling. */
+ 		EXPORT(stext)
+@@ -165,7 +180,11 @@
+ 		/*
+ 		 * Kernel entry point
+ 		 */
++#ifdef CONFIG_TANGO2
++ 		NESTED(old_kernel_entry, 16, sp)
++#else
+ 		NESTED(kernel_entry, 16, sp)
++#endif
+ 		.set	push
+ 		/*
+ 		 * For the moment disable interrupts and mark the kernel mode.
+@@ -205,7 +224,11 @@
+ 
+ 		jal	init_arch
+ 		.set	pop
++#ifdef CONFIG_TANGO2
++ 		END(old_kernel_entry)
++#else
+ 		END(kernel_entry)
++#endif
+ 
+ 
+ #ifdef CONFIG_SMP
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/irq.c linuxmips-2.4.30/arch/mips/kernel/irq.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/irq.c	2003-11-16 17:07:32.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/kernel/irq.c	2007-06-20 14:01:27.000000000 -0700
+@@ -457,8 +457,10 @@
+ 	   a different instance of this same irq, the other processor
+ 	   will take care of it.
+ 	 */
+-	if (!action)
++	if (!action) {
++		desc->handler->shutdown(irq); /* Shut off this IRQ */
+ 		goto out;
++	}
+ 
+ 	/*
+ 	 * Edge triggered interrupts need to remember
+@@ -480,12 +482,14 @@
+ 		desc->status &= ~IRQ_PENDING;
+ 	}
+ 	desc->status &= ~IRQ_INPROGRESS;
+-out:
++
+ 	/*
+ 	 * The ->end() handler has to deal with interrupts which got
+ 	 * disabled while the handler was running.
+ 	 */
+ 	desc->handler->end(irq);
++
++out:
+ 	spin_unlock(&desc->lock);
+ 
+ 	if (softirq_pending(cpu))
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/setup.c linuxmips-2.4.30/arch/mips/kernel/setup.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/setup.c	2005-01-13 13:15:57.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/kernel/setup.c	2007-06-20 14:01:27.000000000 -0700
+@@ -39,6 +39,11 @@
+ #include <asm/ptrace.h>
+ #include <asm/system.h>
+ 
++#ifdef CONFIG_TANGO2
++#include <asm/tango2/tango2.h>
++#include <asm/tango2/memcfg.h>
++#endif
++
+ struct cpuinfo_mips cpu_data[NR_CPUS];
+ EXPORT_SYMBOL(cpu_data);
+ 
+@@ -186,6 +191,15 @@
+ 	int len = 0;
+ 	int usermem = 0;
+ 
++#ifdef CONFIG_TANGO2
++	extern unsigned long em8xxx_kmem_start;
++	extern unsigned long em8xxx_kmem_size;
++	memcfg_t *m=(memcfg_t *)KSEG1ADDR(MEM_BASE_dram_controller_0+FM_MEMCFG);
++	unsigned long kend;
++	unsigned long offset;
++	offset = KSEG1ADDR(em8xxx_kmem_start) - KSEG1ADDR(MEM_BASE_dram_controller_0);
++#endif
++
+ 	printk("Determined physical RAM map:\n");
+ 	print_memory_map();
+ 
+@@ -212,8 +226,23 @@
+ 			if (*from == '@')
+ 				start_at = memparse(from + 1, &from);
+ 			else
++#ifdef CONFIG_TANGO2
++				start_at = MEM_BASE_dram_controller_0+offset;
++#else
+ 				start_at = 0;
++#endif
++
++#ifdef CONFIG_TANGO2
++			/* Aligned by MB boundary */
++			em8xxx_kmem_size = ((start_at + mem_size) & 0xfff00000) - start_at;
++			kend = KSEG1ADDR(em8xxx_kmem_start + em8xxx_kmem_size) - KSEG1ADDR(MEM_BASE_dram_controller_0);
++			m->kernel_end = kend;
++			gen_memcfg_checksum(m);
++			add_memory_region(start_at, em8xxx_kmem_size, BOOT_MEM_RAM);
++#else
+ 			add_memory_region(start_at, mem_size, BOOT_MEM_RAM);
++#endif
++
+ 		}
+ 		c = *(from++);
+ 		if (!c)
+@@ -494,6 +523,7 @@
+ 	void hp_setup(void);
+ 	void au1x00_setup(void);
+ 	void frame_info_init(void);
++	void tango2_setup(void);
+ 
+ 	frame_info_init();
+ #if defined(CONFIG_BLK_DEV_FD) || defined(CONFIG_BLK_DEV_FD_MODULE)
+@@ -691,6 +721,11 @@
+                 pmc_yosemite_setup();
+                 break;
+ #endif
++#ifdef CONFIG_TANGO2
++	case MACH_GROUP_SIGMADESIGNS:
++		tango2_setup();
++		break;
++#endif
+ 	default:
+ 		panic("Unsupported architecture");
+ 	}
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/time.c linuxmips-2.4.30/arch/mips/kernel/time.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/time.c	2004-10-07 19:42:43.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/kernel/time.c	2007-06-20 14:01:27.000000000 -0700
+@@ -32,6 +32,13 @@
+ #include <asm/hardirq.h>
+ #include <asm/div64.h>
+ 
++#ifdef CONFIG_TANGO2
++#include <asm/io.h>
++#include <asm/tango2/rmdefs.h>
++#include <asm/tango2/tango2.h>
++#include <asm/tango2/hardware.h>
++#endif
++
+ /*
+  * The integer part of the number of usecs per jiffy is taken from tick,
+  * but the fractional part is not recorded, so we calculate it using the
+@@ -415,6 +422,34 @@
+ 	unsigned long j;
+ 	unsigned int count;
+ 
++#ifdef CONFIG_TANGO2
++	static int active = 0;
++	static long drift = 0;
++	static unsigned long old_xtal = 0;
++	long diff;
++	unsigned long xtal;
++	
++#ifndef CONFIG_TANGO2_USE_CPU_CLOCK 
++	/* Clear interrupt source */
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_time0_clr, 1);
++#endif
++
++	/* calibrate jiffies against xtal_in_cnt */
++	xtal = gbus_read_uint32(pGBus, REG_BASE_system_block + SYS_xtal_in_cnt);
++	if (active) {
++		int cnt;
++		diff = (long)((xtal <= old_xtal) ? ((0xffffffff - old_xtal) + xtal + 1) : (xtal - old_xtal));
++		drift += (diff - (TANGO2_BASE_FREQUENCY / HZ));
++		if ((cnt = drift / (TANGO2_BASE_FREQUENCY / HZ))) {
++			(*(unsigned long *)&jiffies) += cnt;
++			drift %= (TANGO2_BASE_FREQUENCY / HZ);
++//			printk("Compensate drifting %d: 0x%08lx..\n", cnt, jiffies);
++		}
++	} else
++		active = 1;
++	old_xtal = xtal;
++#endif
++
+ 	count = mips_hpt_read();
+ 	mips_timer_ack();
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/kernel/traps.c linuxmips-2.4.30/arch/mips/kernel/traps.c
+--- linuxmips-2.4.30.ref/arch/mips/kernel/traps.c	2004-11-22 05:38:23.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/kernel/traps.c	2007-06-20 14:01:27.000000000 -0700
+@@ -664,6 +664,9 @@
+ 
+ asmlinkage void do_ri(struct pt_regs *regs)
+ {
++	dump_tlb_all();
++	show_regs(regs);
++
+ 	die_if_kernel("Reserved instruction in kernel code", regs);
+ 
+ 	if (!cpu_has_llsc)
+@@ -729,7 +732,16 @@
+ 	 */
+ 	dump_tlb_all();
+ 	show_regs(regs);
++#if 1
++	// clear all of them (should rather identify culprit)
++	write_c0_watchlo0(0);
++	write_c0_watchlo1(0);
++	write_c0_watchlo2(0);
++	write_c0_watchlo3(0);
++#else
++	// just oops and continue. This should be safe.
+ 	panic("Caught WATCH exception - probably caused by stack overflow.");
++#endif
+ }
+ 
+ asmlinkage void do_mcheck(struct pt_regs *regs)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/Makefile linuxmips-2.4.30/arch/mips/Makefile
+--- linuxmips-2.4.30.ref/arch/mips/Makefile	2005-01-30 00:01:26.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/Makefile	2007-06-20 14:02:52.000000000 -0700
+@@ -44,7 +44,7 @@
+ # crossformat linking we rely on the elf2ecoff tool for format conversion.
+ #
+ GCCFLAGS	:= -I $(TOPDIR)/include/asm/gcc
+-GCCFLAGS	+= -G 0 -mno-abicalls -fno-pic -pipe
++GCCFLAGS	+= -G 0 -mno-abicalls -fno-pic -pipe -fno-builtin
+ GCCFLAGS	+= $(call check_gcc, -finline-limit=100000,)
+ LINKFLAGS	+= -G 0 -static -n
+ MODFLAGS	+= -mlong-calls
+@@ -56,6 +56,32 @@
+ endif
+ endif
+ 
++ifdef CONFIG_TANGO2
++GCCFLAGS	+= -DEM86XX_CHIP=EM86XX_CHIPID_TANGO2
++endif
++
++ifdef CONFIG_TANGO2_ES1
++GCCFLAGS	+= -DEM86XX_REVISION=1
++else
++ifdef CONFIG_TANGO2_ES2
++GCCFLAGS	+= -DEM86XX_REVISION=2
++else
++ifdef CONFIG_TANGO2_ES3
++GCCFLAGS	+= -DEM86XX_REVISION=3
++else
++ifdef CONFIG_TANGO2_ES4
++GCCFLAGS	+= -DEM86XX_REVISION=4
++else
++ifdef CONFIG_TANGO2_ES6
++GCCFLAGS	+= -DEM86XX_REVISION=6
++else
++# Wrong revision specified here.
++endif
++endif
++endif
++endif
++endif
++
+ #
+ # Use: $(call set_gccflags,<cpu0>,<isa0>,<cpu1>,<isa1>,<isa2>)
+ #
+@@ -727,6 +753,21 @@
+ endif
+ 
+ #
++# SigmaDesigns Tango2 board
++#
++ifdef CONFIG_TANGO2
++
++include include/asm-mips/tango2/emhwlib_registers_tango2.inc
++include include/asm-mips/tango2/emhwlib_dram_tango2.inc
++SHELL=/bin/bash
++internal_hex = 0x$(shell printf "%x" $$[$(1)])
++
++SUBDIRS       += arch/mips/tango2
++LIBS          += arch/mips/tango2/tango2.o
++LOADADDR=$(call internal_hex,0x80000000+$(MEM_BASE_dram_controller_0)+$(FM_linuxmips__ftext))
++endif
++
++#
+ # Choosing incompatible machines durings configuration will result in
+ # error messages during linking.  Select a default linkscript if
+ # none has been choosen above.
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/mm/fault.c linuxmips-2.4.30/arch/mips/mm/fault.c
+--- linuxmips-2.4.30.ref/arch/mips/mm/fault.c	2003-04-08 17:46:23.000000000 -0700
++++ linuxmips-2.4.30/arch/mips/mm/fault.c	2007-06-20 14:01:27.000000000 -0700
+@@ -164,7 +164,7 @@
+ 	if (user_mode(regs)) {
+ 		tsk->thread.cp0_badvaddr = address;
+ 		tsk->thread.error_code = write;
+-#if 0
++#if 1
+ 		printk("do_page_fault() #2: sending SIGSEGV to %s for illegal %s\n"
+ 		       "%08lx (epc == %08lx, ra == %08lx)\n",
+ 		       tsk->comm,
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/.cvsignore linuxmips-2.4.30/arch/mips/tango2/.cvsignore
+--- linuxmips-2.4.30.ref/arch/mips/tango2/.cvsignore	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/.cvsignore	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,6 @@
++.depend
++.irq.o.flags
++.prom.o.flags
++.setup.o.flags
++.tango2.o.flags
++.tango2controllers.o.flags
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/delay.c linuxmips-2.4.30/arch/mips/tango2/delay.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/delay.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/delay.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,49 @@
++/*
++ * arch/mips/tango2/delay.c
++ *
++ * Copyright (C) 2003-2004 Sigma Designs, Inc
++ *
++ */
++
++#include <linux/config.h>
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <asm/tango2/rmdefs.h>
++#include <asm/tango2/hardware.h>
++#include <asm/tango2/tango2api.h>
++#include <asm/io.h>
++#include <linux/irq.h>
++#include <linux/sched.h>
++
++static inline unsigned long tango2_getxtal(void)
++{
++	return(gbus_read_uint32(pGBus, REG_BASE_system_block + SYS_xtal_in_cnt));
++}
++
++/* This is the replacement of Linux's udelay. */
++void tango2_udelay(unsigned usec)
++{
++	/* SYS_xtal_in_cnt is a counter running off 27MHz, so 1 usec
++           is roughly equivalent to 27 increase of count */
++	unsigned long start = tango2_getxtal();
++	unsigned long end = start + (usec * 27);
++
++	if (end <= start) 
++		/* Handle overflow condition */
++		while (tango2_getxtal() > start);
++	while (tango2_getxtal() < end);
++}
++
++void tango2_syncwith_xtal(unsigned long *mark, unsigned usec)
++{
++	unsigned long end = *mark + (usec * 27);
++	if (end > *mark)
++		/* Handle overflow condition */
++		while (tango2_getxtal() > *mark);
++	while (tango2_getxtal() < end);
++	*mark = end;
++}
++
++EXPORT_SYMBOL(tango2_udelay);
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/full_sha1.c linuxmips-2.4.30/arch/mips/tango2/full_sha1.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/full_sha1.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/full_sha1.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,48 @@
++
++#ifdef __KERNEL__
++#include <linux/config.h>
++#include <linux/string.h>
++#else
++#include "zbootcfg.h"
++#include "uart.h"
++#include "util.h"
++#endif
++
++#include "sha1sum.h"
++
++#if defined(CONFIG_XENV_SUPPORT) || defined(CONFIG_TANGO2_XENV)
++
++// #include "xos.h"
++
++#define XENV_RDONLY
++
++#ifndef __KERNEL__
++typedef unsigned int RMuint32;
++typedef unsigned short RMuint16;
++typedef unsigned char RMuint8;
++typedef char RMascii;
++typedef int RMstatus;
++#else
++#include <asm/tango2/rmdefs.h>
++#endif
++
++/*
++  append a single "1" bit to message
++  append "0" bits until message length ~ 448 ~ -64 (mod 512)
++  append length of message, in bits as 64-bit big-endian integer to message
++
++  Below, size and left are expressed in bytes. Implementation is compact but endian-dependent
++*/
++
++void full_sha1(RMuint32 digest[5],const RMuint8 *src,RMuint32 size,RMuint32 fromISP)
++{
++#if 0
++	if (fromISP) sink(); // unsupported
++#else
++	if (fromISP) return; // unsupported
++#endif
++
++	sha1sum(src, size, digest);
++}
++#endif /* CONFIG_XENV_SUPPORT */
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/gbus_standalone.S linuxmips-2.4.30/arch/mips/tango2/gbus_standalone.S
+--- linuxmips-2.4.30.ref/arch/mips/tango2/gbus_standalone.S	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/gbus_standalone.S	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,184 @@
++/*
++	Refer to bug #3644.
++	
++	TLB-based implementation works on the ranges:
++	[0x00000000..0x20000000[ access thru kseg1
++	[0x20000000..0x2xxxxxxx (size of dram1, a parameter of ioremap())[ access thru tlb. Outside: unpredictable/oops.
++
++	Remap-based implementation does:
++	00xy b27b26..b0 to 101y(b27|x)b26..b0.
++       and works everywhere excepted ranges: [0x18000000..0x20000000[ and [0x28000000..0xffffffff]
++
++	Test with
++	{
++		volatile int q=gbus_read_uint32(pGBus,0x1020212c); // correct
++		q=gbus_read_uint32(pGBus,0x1f20212c);              // incorrect
++		q=gbus_read_uint32(pGBus,0x2020212c);              // correct
++		q=gbus_read_uint32(pGBus,0x2720212c);              // correct
++		q=gbus_read_uint32(pGBus,0x2820212c);              // incorrect
++		q=gbus_read_uint32(pGBus,0x2f20212c);              // incorrect
++	}
++*/
++	
++#include <asm/asm.h>
++#include <asm/regdef.h>
++#include <asm/mipsregs.h>
++
++.set noreorder
++.set mips32r2
++
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1
++
++LEAF(gbus_read_dram_uint8)
++	ext t0, a1, 29, 1 // 0x20000000 is bit29
++	bnez t0, 1f
++	lui t1, 0xa000
++	or t0, t1, a1
++	jr ra
++	lbu v0, 0(t0)
++1:
++	lui t1, 0x2000
++	sub t0, a1, t1
++	lw t1, em86xx_tlb_dram1_map_base
++	add t0, t1
++	jr ra
++	lbu v0, 0(t0)
++END(gbus_read_dram_uint8)
++
++LEAF(gbus_read_dram_uint16)
++	ext t0, a1, 29, 1 // 0x20000000 is bit29
++	bnez t0, 1f
++	lui t1, 0xa000
++	or t0, t1, a1
++	jr ra
++	lhu v0, 0(t0)
++1:
++	lui t1, 0x2000
++	sub t0, a1, t1
++	lw t1, em86xx_tlb_dram1_map_base
++	add t0, t1
++	jr ra
++	lhu v0, 0(t0)
++END(gbus_read_dram_uint16)
++
++LEAF(gbus_read_dram_uint32)
++	ext t0, a1, 29, 1 // 0x20000000 is bit29
++	bnez t0, 1f
++	lui t1, 0xa000
++	or t0, t1, a1
++	jr ra
++	lw v0, 0(t0)
++1:
++	lui t1, 0x2000
++	sub t0, a1, t1
++	lw t1, em86xx_tlb_dram1_map_base
++	add t0, t1
++	jr ra
++	lw v0, 0(t0)
++END(gbus_read_dram_uint32)
++
++LEAF(gbus_write_dram_uint8)
++	ext t0, a1, 29, 1 // 0x20000000 is bit29
++	bnez t0, 1f
++	lui t1, 0xa000
++	or t0, t1, a1
++	jr ra
++	sb a2, 0(t0)
++1:
++	lui t1, 0x2000
++	sub t0, a1, t1
++	lw t1, em86xx_tlb_dram1_map_base
++	add t0, t1
++	jr ra
++	sb a2, 0(t0)
++END(gbus_write_dram_uint8)
++
++LEAF(gbus_write_dram_uint16)
++	ext t0, a1, 29, 1 // 0x20000000 is bit29
++	bnez t0, 1f
++	lui t1, 0xa000
++	or t0, t1, a1
++	jr ra
++	sh a2, 0(t0)
++1:
++	lui t1, 0x2000
++	sub t0, a1, t1
++	lw t1, em86xx_tlb_dram1_map_base
++	add t0, t1
++	jr ra
++	sh a2, 0(t0)
++END(gbus_write_dram_uint16)
++
++LEAF(gbus_write_dram_uint32)
++	ext t0, a1, 29, 1 // 0x20000000 is bit29
++	bnez t0, 1f
++	lui t1, 0xa000
++	or t0, t1, a1
++	jr ra
++	sw a2, 0(t0)
++1:
++	lui t1, 0x2000
++	sub t0, a1, t1
++	lw t1, em86xx_tlb_dram1_map_base
++	add t0, t1
++	jr ra
++	sw a2, 0(t0)
++END(gbus_write_dram_uint32)
++
++#else
++		
++LEAF(gbus_read_dram_uint8)
++	rotr t0, a1, 29
++	ins t0, t0, 30, 1
++	or t0, 5
++	rotr t0, 3
++	jr ra
++	lbu v0, 0(t0)
++END(gbus_read_dram_uint8)
++	
++LEAF(gbus_read_dram_uint16)
++	rotr t0, a1, 29
++	ins t0, t0, 30, 1
++	or t0, 5
++	rotr t0, 3
++	jr ra
++	lhu v0, 0(t0)
++END(gbus_read_dram_uint16)
++	
++LEAF(gbus_read_dram_uint32)
++	rotr t0, a1, 29
++	ins t0, t0, 30, 1
++	or t0, 5
++	rotr t0, 3
++	jr ra
++	lw v0, 0(t0)
++END(gbus_read_dram_uint32)
++	
++LEAF(gbus_write_dram_uint8)
++	rotr t0, a1, 29
++	ins t0, t0, 30, 1
++	or t0, 5
++	rotr t0, 3
++	jr ra
++	sb a2, 0(t0)
++END(gbus_write_dram_uint8)
++	
++LEAF(gbus_write_dram_uint16)
++	rotr t0, a1, 29
++	ins t0, t0, 30, 1
++	or t0, 5
++	rotr t0, 3
++	jr ra
++	sh a2, 0(t0)
++END(gbus_write_dram_uint16)
++	
++LEAF(gbus_write_dram_uint32)
++	rotr t0, a1, 29
++	ins t0, t0, 30, 1
++	or t0, 5
++	rotr t0, 3
++	jr ra
++	sw a2, 0(t0)
++END(gbus_write_dram_uint32)
++
++#endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/irq.c linuxmips-2.4.30/arch/mips/tango2/irq.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/irq.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/irq.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,211 @@
++/*
++ * Copyright 2001 MontaVista Software Inc.
++ * Author: Jun Sun, jsun@mvista.com or jsun@junsun.net
++ *
++ * init_IRQ for tango2.
++ *
++ * This program is free software; you can redistribute  it and/or modify it
++ * under  the terms of  the GNU General  Public License as published by the
++ * Free Software Foundation;  either version 2 of the  License, or (at your
++ * option) any later version.
++ *
++ */
++
++#include <linux/config.h>
++#include <linux/init.h>
++#include <linux/kernel_stat.h>
++#include <linux/signal.h>
++#include <linux/sched.h>
++#include <linux/interrupt.h>
++#include <linux/slab.h>
++#include <linux/random.h>
++#include <linux/pm.h>
++#include <linux/irq.h>
++
++#include <asm/irq_cpu.h>
++#include <asm/mipsregs.h>
++#include <asm/gdb-stub.h>
++
++#include <asm/tango2/tango2.h>
++#include <asm/tango2/rmdefs.h>
++
++extern asmlinkage void tango2IRQ(void);
++
++#include "tango2controllers.h"
++
++extern void spurious_interrupt(void);
++extern void breakpoint(void);
++
++static struct irqaction cascade =
++        { no_action, SA_SHIRQ, 0, "cascade", NULL, NULL };
++
++#if (EM86XX_REVISION > 3)
++static inline u64 get_irq_status(void)
++{
++	return((((u64)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_status_hi))<<32) | 
++		((u64)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_status)));
++}
++static inline u64 get_fiq_status(void)
++{
++	return((((u64)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_status_hi))<<32) | 
++		((u64)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_status)));
++}
++static inline u64 get_iiq_status(void)
++{
++	return((((u64)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_status_hi))<<32) | 
++		((u64)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_status)));
++}
++#else
++static inline u32 get_irq_status(void)
++{
++	return((u32)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_status));
++}
++static inline u32 get_fiq_status(void)
++{
++	return((u32)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_status));
++}
++static inline u32 get_iiq_status(void)
++{
++	return((u32)gbus_read_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_status));
++}
++#endif
++
++// called from tango2IRQ.S
++void tango2_dispatch(int ipline,struct pt_regs *regs)
++{
++	int x;
++#if (EM86XX_REVISION > 3)
++	u64 status;
++#else
++	u32 status;
++#endif
++	// the software priority is below:
++	switch (ipline) {
++	case 2:
++		if ((status = get_irq_status()) == 0) {
++			spurious_interrupt();
++			return;
++		} else {
++			do {
++				for (x = 0; status != 0; x++, status >>= 1) {
++					if ((status & 0x1) != 0) { /* Interrupt is here */
++						do_IRQ(IRQ_CONTROLLER_IRQ_BASE + x, regs);
++						break;
++					}
++				}
++			} while ((status = get_irq_status()) != 0);
++		}
++		break;
++
++	case 3:
++		if ((status = get_fiq_status()) == 0) {
++			spurious_interrupt();
++			return;
++		} else {
++			u32 sr_old = read_c0_status();
++			u32 sr_new = sr_old & (~STATUSF_IP2); /* IP2 is assoicated with IRQ */
++
++			/* Mask out IRQ as FIQ > IRQ */
++			write_c0_status(sr_new);
++			do {
++				for (x = 0; status != 0; x++, status >>= 1) {
++					if ((status & 0x1) != 0) { /* Interrupt is here */
++						do_IRQ(FIQ_CONTROLLER_IRQ_BASE + x, regs);
++						break;
++					}
++				}
++			} while ((status = get_fiq_status()) != 0);
++			write_c0_status(sr_old);
++		}
++		break;
++
++	case 4:
++		if ((status = get_iiq_status()) == 0) {
++			spurious_interrupt();
++			return;
++		} else {
++			u32 sr_old = read_c0_status();
++			u32 sr_new = sr_old & (~(STATUSF_IP2|STATUSF_IP3)); /* IP3 is assoicated with FIQ */
++
++			/* Mask out FIQ/IRQ as IIQ > FIQ > IRQ */
++			write_c0_status(sr_new);
++			do {
++				for (x = 0; status != 0; x++, status >>= 1) {
++					if ((status & 0x1) != 0) { /* Interrupt is here */
++						do_IRQ(IIQ_CONTROLLER_IRQ_BASE + x, regs);
++						break;
++					}
++				}
++			} while ((status = get_iiq_status()) != 0);
++			write_c0_status(sr_old);
++		}
++		break;
++
++	case 7:
++		do_IRQ(7,regs);
++		return;
++
++	default:
++		emprintk("spurious %d\n",ipline);
++		spurious_interrupt();
++		return;
++	}
++}
++
++void __init init_IRQ(void)
++{
++	unsigned long rise = 0;
++	unsigned long fall = 0;
++	unsigned long edge_trig = 0;
++#if (EM86XX_REVISION > 3)
++	unsigned long rise_hi = 0;
++	unsigned long fall_hi = 0;
++	unsigned long edge_trig_hi = 0;
++#endif
++
++	// this hooks except_vec4 to tango2 assembly routine:
++	set_except_vector(0, tango2IRQ);
++
++	// irq_desc entries 0..7
++	mips_cpu_irq_init(MIPS_CPU_IRQ_BASE);
++
++	// cascade for irq controller (IP2,3,4=HW0,1,2)
++	tango2_irq_init(TANGO2_CTRLIRQ,IRQ_CONTROLLER_IRQ_BASE);
++	tango2_irq_init(TANGO2_CTRLFIQ,FIQ_CONTROLLER_IRQ_BASE);
++	tango2_irq_init(TANGO2_CTRLIIQ,IIQ_CONTROLLER_IRQ_BASE);
++
++	setup_irq(MIPS_CPU_IRQ_BASE+STATUSB_IP2-STATUSB_IP0, &cascade);
++	setup_irq(MIPS_CPU_IRQ_BASE+STATUSB_IP3-STATUSB_IP0, &cascade);
++	setup_irq(MIPS_CPU_IRQ_BASE+STATUSB_IP4-STATUSB_IP0, &cascade);
++
++#if (EM86XX_REVISION > 3)
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableclr_hi,0xffffffff);
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableclr_hi,0xffffffff);
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableclr_hi,0xffffffff);
++#endif
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableclr,0xffffffff);
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableclr,0xffffffff);
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableclr,0xffffffff);
++
++#ifdef CONFIG_KGDB
++ 	printk("Setting debug traps - please connect the remote debugger.\n");
++
++	set_debug_traps();
++
++	breakpoint();
++#endif
++
++	rise = gbus_read_uint32(pGBus, REG_BASE_cpu_block + CPU_edge_config_rise);
++	fall = gbus_read_uint32(pGBus, REG_BASE_cpu_block + CPU_edge_config_fall);
++	edge_trig = rise ^ fall;
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,edge_trig);
++#if (EM86XX_REVISION > 3)
++	rise_hi = gbus_read_uint32(pGBus, REG_BASE_cpu_block + CPU_edge_config_rise_hi);
++	fall_hi = gbus_read_uint32(pGBus, REG_BASE_cpu_block + CPU_edge_config_fall_hi);
++	edge_trig_hi = rise_hi ^ fall_hi;
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat_hi,edge_trig_hi);
++#endif
++
++	return;
++}
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/Makefile linuxmips-2.4.30/arch/mips/tango2/Makefile
+--- linuxmips-2.4.30.ref/arch/mips/tango2/Makefile	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/Makefile	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,21 @@
++#
++# Makefile for SigmaDesigns Tango2 board
++#
++# Note! Dependencies are done automagically by 'make dep', which also
++# removes any old dependencies. DON'T put your own dependencies here
++# unless it's something special (ie not a .c file).
++#
++
++USE_STANDARD_AS_RULE := true
++
++O_TARGET:= tango2.o
++ 
++export-objs	+= prom.o delay.o
++ 
++obj-y    := tango2IRQ.o setup.o prom.o gbus_standalone.o irq.o tango2controllers.o delay.o 
++
++ifdef CONFIG_TANGO2_XENV
++obj-y	+= sha1sum.o xenv.o full_sha1.o
++endif
++
++include $(TOPDIR)/Rules.make
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/prom.c linuxmips-2.4.30/arch/mips/tango2/prom.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/prom.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/prom.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,1018 @@
++/*
++ * Copyright 2001 MontaVista Software Inc.
++ * Author: Jun Sun, jsun@mvista.com or jsun@junsun.net
++ *
++ * arch/mips/tango2/prom.c
++ *     prom setup file for tango2
++ *
++ * This program is free software; you can redistribute  it and/or modify it
++ * under  the terms of  the GNU General  Public License as published by the
++ * Free Software Foundation;  either version 2 of the  License, or (at your
++ * option) any later version.
++ ***********************************************************************
++ */
++
++#include <linux/init.h>
++#include <linux/config.h>
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/string.h>
++#include <linux/mm.h>
++#include <linux/bootmem.h>
++
++#include <asm/bootinfo.h>
++#include <asm/addrspace.h>
++#include <asm/wbflush.h>
++
++#include <asm/tango2/tango2.h>
++#include <asm/tango2/rmdefs.h>
++#include <asm/tango2/memcfg.h>
++#include <asm/tango2/sigblock.h>
++#include <asm/tango2/zboot.h>
++
++#ifdef CONFIG_TANGO2_XENV
++#include "xenv.h"
++#include "xenvkeys.h"
++#endif
++
++char arcs_cmdline[CL_SIZE];
++unsigned long em8xxx_cpu_frequency = 0L;
++unsigned long em8xxx_sys_frequency = 0L;
++unsigned long em8xxx_kmem_start = 0L;
++unsigned long em8xxx_kmem_size = 0L;
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK)
++struct signature_block *sigptr = NULL;
++static struct signature_block sigblock;
++#elif defined(CONFIG_TANGO2_XENV)
++
++#define REMAPPED_REG	CPU_remap4
++#define REMAPPED_BASE	KSEG1ADDR(CPU_remap4_address) 
++
++#define XENV_MAX_FLASH_PARTITIONS   16
++
++unsigned int xenv_scard_5v_pin = 0, xenv_scard_off_pin = 0, xenv_scard_cmd_pin = 0;
++unsigned int xenv_cs_flash_size[4] = { 0, 0, 0, 0 };
++unsigned int xenv_cs_flash_parts[4] = { 0, 0, 0, 0 };
++unsigned int xenv_flash_parts_size[4][XENV_MAX_FLASH_PARTITIONS];
++unsigned int xenv_flash_parts_offset[4][XENV_MAX_FLASH_PARTITIONS];
++unsigned int xenv_uart_console_port = 0;
++unsigned int xenv_uart_used_ports = 1;
++
++static unsigned int xenv_enabled_devices = 0;
++static unsigned int xenv_isaide_timing_slot = 0;
++static unsigned int xenv_isaide_irq = 0;
++static unsigned int xenv_mac_hi = 0, xenv_mac_lo = 0;
++static unsigned int xenv_pcidev_irq_route[4] = { 0, 0, 0, 0 };
++
++static unsigned long xenv_addr = 0, xenv_gbus_addr = 0;
++
++#define ISAIDE_SHIFT		0
++#define BMIDE_SHIFT		1
++#define PCIHOST_SHIFT		2
++#define ETHERNET_SHIFT		3
++#define IR_SHIFT		4
++#define FIP_SHIFT		5	
++#define I2CM_SHIFT		6
++#define I2CS_SHIFT		7
++#define SDIO_SHIFT		8
++#define USB_SHIFT		9
++#define PCI1_SHIFT		10
++#define PCI2_SHIFT		11
++#define PCI3_SHIFT		12
++#define PCI4_SHIFT		13
++#define PCI5_SHIFT		14
++#define PCI6_SHIFT		15
++#define SATA_SHIFT		16
++#define SCARD_SHIFT		17
++#define GNET_SHIFT		18
++/*				19-32: undefined */
++#else
++/* !CONFIG_TANGO2_SIG_BLOCK && !CONFIG_TANGO2_XENV */
++#endif
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++static int tango2_device_info(void);
++unsigned long em8xxx_baudrates[2] = { CONFIG_TANGO2_BASE_BAUD, CONFIG_TANGO2_BASE_BAUD };
++#else
++/* !CONFIG_TANGO2_SIG_BLOCK && !CONFIG_TANGO2_XENV */
++#endif
++
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++unsigned long em86xx_tlb_dram1_map_base = 0L;
++unsigned long em86xx_tlb_dram1_map_size = 0L;
++#endif
++
++const char *get_system_type(void)
++{
++	return "SigmaDesigns Tango2";
++}
++
++unsigned long tango2_get_sysclock(void)
++{
++#if (EM86XX_REVISION > 3)
++	unsigned long sys_clkgen_pll, sysclk_mux, sysclk_premux, n, m, freq, div, k, mux;
++
++	k = m = sys_clkgen_pll = 0;
++ 	sysclk_mux = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_sysclk_mux);
++ 	sysclk_premux = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_sysclk_premux);
++	switch(sysclk_premux & 0x3) {
++		case 0:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen0_pll);
++			m = (sys_clkgen_pll >> 16) & 0x1f;
++			k = (sys_clkgen_pll >> 14) & 0x3;
++			break;
++		case 1:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen1_pll);
++			m = (sys_clkgen_pll >> 16) & 0x7f;
++			break;
++		case 2:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen2_pll);
++			m = (sys_clkgen_pll >> 16) & 0x7f;
++			break;
++		case 3:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen3_pll);
++			m = (sys_clkgen_pll >> 16) & 0x7f;
++			break;
++	}
++        n = sys_clkgen_pll & 0x000003ff;
++
++	/* Not using XTAL_IN, cannot calculate */
++	if ((sys_clkgen_pll & 0x07000000) != 0x01000000)
++		return(0);
++
++	/* Calculate the divider */
++	mux = (sysclk_mux >> 8) & 0xf;
++	if (mux == 0) /* Get system clock frequency */
++		div = 2;
++	else if ((mux == 1) || ((mux >= 8) && (mux < 0xc)))
++		div = 4;
++	else if ((mux >= 2) && (mux < 8))
++		div = 3;
++	else
++		return(0); /* Wrong divider setting */
++
++	if (sysclk_mux & 0x1) 	/* PLL is used */
++		freq = ((TANGO2_BASE_FREQUENCY / (m + 2)) * (n + 2)) / (div * (1 << k));
++	else
++		freq = TANGO2_BASE_FREQUENCY / div;
++#else
++	unsigned long sys_clkgen_pll, sysclk_mux, n, m, freq, div;
++ 	sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen_pll);
++ 	sysclk_mux = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_sysclk_mux);
++        n = sys_clkgen_pll & 0x000003ff;
++        m = (sys_clkgen_pll & 0x003f0000) >> 16;
++
++	/* Calculate the divider */
++	if ((sysclk_mux & 0x300) == 0x000) /* Get system clock frequency */
++		div = 2;
++	else if ((sysclk_mux & 0x300) == 0x100)
++		div = 4;
++	else
++		div = 3;
++
++	if (sysclk_mux & 0x1) 	/* PLL is used */
++		freq = ((TANGO2_BASE_FREQUENCY / (m + 2)) * (n + 2)) / div;
++	else
++		freq = TANGO2_BASE_FREQUENCY / div;
++#endif
++	return(freq);
++}
++
++unsigned long tango2_get_cpuclock(void)
++{
++#if (EM86XX_REVISION > 3)
++	unsigned long sys_clkgen_pll, sysclk_mux, sysclk_premux, n, m, freq, div, k, mux;
++
++	k = m = sys_clkgen_pll = 0;
++ 	sysclk_mux = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_sysclk_mux);
++ 	sysclk_premux = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_sysclk_premux);
++	switch(sysclk_premux & 0x3) {
++		case 0:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen0_pll);
++			m = (sys_clkgen_pll >> 16) & 0x1f;
++			k = (sys_clkgen_pll >> 14) & 0x3;
++			break;
++		case 1:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen1_pll);
++			m = (sys_clkgen_pll >> 16) & 0x7f;
++			break;
++		case 2:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen2_pll);
++			m = (sys_clkgen_pll >> 16) & 0x7f;
++			break;
++		case 3:
++			sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen3_pll);
++			m = (sys_clkgen_pll >> 16) & 0x7f;
++			break;
++	}
++        n = sys_clkgen_pll & 0x000003ff;
++
++	/* Not using XTAL_IN, cannot calculate */
++	if ((sys_clkgen_pll & 0x07000000) != 0x01000000)
++		return(0);
++
++	/* Calculate the divider */
++	mux = (sysclk_mux >> 8) & 0xf;
++	if ((mux == 3) || (mux == 4) || (mux == 6)) /* Get CPU frequency */
++		div = 3;
++	else if ((mux == 8) || (mux == 0xa))
++		div = 4;
++	else if ((mux == 0) || (mux == 1) || (mux == 2) || (mux == 5) || (mux == 7) || 
++			(mux == 9) || (mux == 0xb))
++		div = 2;
++	else
++		return(0); /* Wrong divider setting */
++
++	if (sysclk_mux & 0x1) 	/* PLL is used */
++		freq = ((TANGO2_BASE_FREQUENCY / (m + 2)) * (n + 2)) / (div * (1 << k));
++	else
++		freq = TANGO2_BASE_FREQUENCY / div;
++#else
++	unsigned long sys_clkgen_pll, sysclk_mux, n, m, freq, div;
++ 	sys_clkgen_pll = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_clkgen_pll);
++ 	sysclk_mux = *(volatile unsigned long *)KSEG1ADDR(REG_BASE_system_block + SYS_sysclk_mux);
++        n = sys_clkgen_pll & 0x000003ff;
++        m = (sys_clkgen_pll & 0x003f0000) >> 16;
++
++	if ((sysclk_mux & 0x300) == 0x300) /* Get CPU frequency */
++		div = 3;
++	else
++		div = 2;
++
++	/* Calculate the divider */
++	if (sysclk_mux & 0x1) 	/* PLL is used */
++		freq = ((TANGO2_BASE_FREQUENCY / (m + 2)) * (n + 2)) / div;
++	else
++		freq = TANGO2_BASE_FREQUENCY / div;
++#endif
++	return(freq);
++}
++
++#if 0
++// rather do this from gdb with jtag [hwb_rw gdb macro]
++
++/// 
++/**
++   <long-description>
++
++   @param start 
++   @param size  power of two bw 8 and 4096
++   @param mode  1:W 2:R 4:I
++*/
++void setup_watch(unsigned long start,int size,int mode)
++{
++	start=start&(~7);
++
++	emprintk("watching mode %d [%p,%p]\n",mode,start,start+size);
++	write_c0_watchlo0(start|mode);
++	write_c0_watchhi0((1<<30)|((size-1)&(~7)));
++}
++#endif
++
++void kernel_entry(void);
++
++int __init prom_init(int argc, char **argv, char **envp, int *prom_vec)
++{
++	extern char _ftext; /* For code start address (not entry address)  */
++	unsigned long kend;
++	unsigned long offset;
++	memcfg_t *m=(memcfg_t *)KSEG1ADDR(MEM_BASE_dram_controller_0+FM_MEMCFG);
++	int i;
++
++#ifdef CONFIG_CMDLINE_BOOL
++	strcpy (arcs_cmdline, CONFIG_CMDLINE);
++#endif
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK)
++	/* Save the signature block locally */
++	memcpy(&sigblock, (struct signature_block *)KSEG1ADDR(0x1fc00000), sizeof(struct signature_block));
++	sigptr = &sigblock;
++
++	/* Get the baudrate information from signature block */
++	if ((em8xxx_baudrates[0] = em8xxx_baudrates[1] = zboot_default_baudrate(sigptr)) == 0) 
++		em8xxx_baudrates[0] = em8xxx_baudrates[1] = CONFIG_TANGO2_BASE_BAUD; /* Use default */
++#elif defined(CONFIG_TANGO2_XENV)
++	if ((xenv_gbus_addr = xenv_addr = gbus_read_uint32(pGBus, REG_BASE_cpu_block + LR_XENV_LOCATION)) != 0) {
++		/* Got the xenv address in gbus form, now convert it in remap from so we can access it */
++		gbus_write_uint32(pGBus, REG_BASE_cpu_block + REMAPPED_REG, xenv_addr & 0xfc000000);
++		iob();
++		xenv_addr = REMAPPED_BASE + (xenv_addr & 0x03ffffff);
++
++		if (xenv_isvalid((void *)xenv_addr, MAX_XENV_SIZE) < 0)
++			xenv_addr = 0;
++	}
++
++	if (xenv_addr == 0) 
++		printk("WARNING: Cannot found valid XENV block.\n");
++	else {
++		extern int tango2_pcidev_enabled(const int pci_idsel);
++		unsigned long cs_config = (gbus_read_uint32(pGBus, REG_BASE_host_interface + PB_CS_config) >> 12) & 0xf;
++		unsigned int val;
++		RMuint32 size;
++		char buf[32], xenv_cmdline[CL_SIZE];
++		int j;
++
++		memset(&xenv_flash_parts_size[0][0], 0, sizeof(xenv_flash_parts_size));
++		memset(&xenv_flash_parts_offset[0][0], 0, sizeof(xenv_flash_parts_offset));
++
++		/* Getting Linux command line from XENV */
++		size = CL_SIZE;
++		if (xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_LINUX_CMD, xenv_cmdline, &size) == RM_OK) {
++			xenv_cmdline[size] = '\0';
++			if (xenv_cmdline[0] == '\"') {
++				if (xenv_cmdline[size -1] == '\"')
++					xenv_cmdline[size - 1] = '\0';
++				strcpy(arcs_cmdline, &xenv_cmdline[1]);
++			} else
++				strcpy(arcs_cmdline, &xenv_cmdline[0]);
++		}
++
++		size = 4;
++		if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_DEF_BAUDRATE, &val, &size) == RM_OK) && (size == 4))
++			em8xxx_baudrates[0] = em8xxx_baudrates[1] = val;
++		size = 4;
++		if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_ENABLED_DEVICES, &val, &size) == RM_OK) && (size == 4)) 
++			xenv_enabled_devices = val;
++		size = 4;
++		if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_ISAIDE_IRQ_ROUTE, &val, &size) == RM_OK) && (size == 4)) 
++			xenv_isaide_irq = (int)(val & 0x3);
++		size = 4;
++	        if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_ISAIDE_TIMING_SLOT, &val, &size) == RM_OK) && (size == 4))
++			xenv_isaide_timing_slot = (int)(val & 0x7);
++		size = 4;
++	        if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_SCARD_OFF, &val, &size) == RM_OK) && (size == 4))
++			xenv_scard_off_pin = val;
++		size = 4;
++	        if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_SCARD_5V, &val, &size) == RM_OK) && (size == 4))
++			xenv_scard_5v_pin = val;
++		size = 4;
++	        if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_SCARD_CMD, &val, &size) == RM_OK) && (size == 4))
++			xenv_scard_cmd_pin = val;
++		size = 4;
++	        if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_CONSOLE_UART_PORT, &val, &size) == RM_OK) && (size == 4))
++			xenv_uart_console_port = val;
++		size = 4;
++	        if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, XENV_KEY_UART_USED_PORTS, &val, &size) == RM_OK) && (size == 4))
++			xenv_uart_used_ports = val;
++
++		if (xenv_uart_console_port == 0) /* for backward compatibility */
++			xenv_uart_used_ports |= 1;
++
++		for (i = 0; i < 2; i++) {
++			sprintf(buf, XENV_KEYS_UART_BAUDRATE, i);
++			size = 4;
++			if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, buf, &val, &size) == RM_OK) && (size == 4))
++				em8xxx_baudrates[i] = val;
++		}
++
++		/* Boot program (e.g. zboot) should set up this already. */
++		xenv_mac_hi = gbus_read_uint32(pGBus, REG_BASE_cpu_block + LR_ETH_MAC_HI) & 0xffff;
++		xenv_mac_lo = gbus_read_uint32(pGBus, REG_BASE_cpu_block + LR_ETH_MAC_LO);
++
++		// Getting PCI IRQ routing information
++		for (i = 1; i <= 4; i++) {
++			if (!tango2_pcidev_enabled(i))
++				continue;
++			sprintf(buf, XENV_KEYS_PCI_IRQ_ROUTE, i);
++	                size = 4;
++	                if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, buf, &val, &size) == RM_OK) && (size == 4)) 
++				xenv_pcidev_irq_route[i - 1] = val;
++		}
++		/* Save all cs0-cs3 flash keys needed from XENV */
++		for (i = 0; i < 4; i++) {
++			if ((cs_config & (1 << i)) != 0) /* Check to see if see to IDE mode */
++				continue;
++			sprintf(buf, XENV_KEYS_CS_SIZE, i);
++			size = 4;
++			if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, buf, &val, &size) == RM_OK) && (size == 4)) 
++				xenv_cs_flash_size[i] = val;
++			if (xenv_cs_flash_size[i] == 0)
++				continue;
++			sprintf(buf, XENV_KEYS_CS_PARTS, i);
++			size = 4;
++			if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, buf, &val, &size) == RM_OK) && (size == 4)) {
++				xenv_cs_flash_parts[i] = val;
++				for (j = 0; j < xenv_cs_flash_parts[i]; j++) {
++					sprintf(buf, XENV_KEYS_CS_PART_SIZE, i, j + 1);
++					size = 4;
++					if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, buf, &val, &size) == RM_OK) && (size == 4)) 
++						xenv_flash_parts_size[i][j] = val;
++					sprintf(buf, XENV_KEYS_CS_PART_OFFSET, i, j + 1);
++					size = 4;
++					if ((xenv_get((void *)xenv_addr, MAX_XENV_SIZE, buf, &val, &size) == RM_OK) && (size == 4)) 
++						xenv_flash_parts_offset[i][j] = val;
++				}
++			}
++		}
++	}
++#endif
++
++	/* Pass argument in ordinary way, override the command line */
++	if ((argc > 1) && (argc < 65) && (argv != NULL)) { /* Up to 64 arguments */
++		arcs_cmdline[0] = '\0';
++		for (i = 1; i < argc; i++) {
++			strcat(arcs_cmdline, argv[i]);
++			strcat(arcs_cmdline, " ");
++		}
++	}
++
++	em8xxx_kmem_start = ((unsigned long)(&_ftext) & 0xfffff000); /* Aligned by 4KB */
++	/* Aligned by MB boundary */
++	em8xxx_kmem_size = ((em8xxx_kmem_start + TANGO2_SYSTEMRAM_ACTUALSIZE) & 0xfff00000) - em8xxx_kmem_start;
++ 
++	/* Re-program CPU_remap so we can see full 256MB space in KSEG0/KSEG1 */
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_remap, 0x1fc00000);
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_remap1, 0x00000000);
++	iob();
++
++#ifdef CONFIG_UART_USE_SYSCLK
++ 	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_UART0_base + CPU_UART_CLKSEL, 0);
++ 	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_UART1_base + CPU_UART_CLKSEL, 0);
++#else
++ 	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_UART0_base + CPU_UART_CLKSEL, 1);
++ 	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_UART1_base + CPU_UART_CLKSEL, 1);
++#endif
++
++	/* you should these macros defined in include/asm/bootinfo.h */
++        mips_machgroup = MACH_GROUP_SIGMADESIGNS;
++        mips_machtype = MACH_TANGO2;
++	__write_32bit_c0_register($15, 1, kernel_entry);
++
++	kend = KSEG1ADDR(em8xxx_kmem_start + em8xxx_kmem_size) - KSEG1ADDR(MEM_BASE_dram_controller_0);
++
++	if (is_valid_memcfg(m) == 0) {
++		memset(m,0,sizeof(memcfg_t));
++		m->signature=MEMCFG_SIGNATURE;
++		m->dram0_size=TANGO2_SYSTEMRAM_ACTUALSIZE;
++		m->kernel_end=kend;
++		gen_memcfg_checksum(m);
++//		emprintk("ebase @%08lx. memcfg ready @%08lx.\n", read_c0_ebase(), MEM_BASE_dram_controller_0+FM_MEMCFG);
++	} else {
++		m->kernel_end = kend;
++		gen_memcfg_checksum(m);
++//		emprintk("ebase @%08lx. found memcfg @%08lx.\n", read_c0_ebase(), MEM_BASE_dram_controller_0+FM_MEMCFG);
++	}
++
++#ifdef CONFIG_QUICKTURN
++	// emhack: removing 16MB here!
++	add_memory_region(MEM_BASE_dram_controller_0+16*1024*1024, TANGO2_SYSTEMRAM_ACTUALSIZE, BOOT_MEM_RAM);
++#else
++	offset = KSEG1ADDR(em8xxx_kmem_start) - KSEG1ADDR(MEM_BASE_dram_controller_0);
++	/* Mark the address from 0 to the start of kernel reserved */
++	add_memory_region(0, MEM_BASE_dram_controller_0+offset, BOOT_MEM_RESERVED);
++	add_memory_region(MEM_BASE_dram_controller_0+offset, em8xxx_kmem_size, BOOT_MEM_RAM);
++                                                                                
++//	emprintk("Adding memory region from 0x%08lx, size 0x%08lx\n", MEM_BASE_dram_controller_0+offset, em8xxx_kmem_size);
++#endif
++
++//	emprintk("status=%p ebase=%p watchlo=%p watchhi=%p\n",read_c0_status(),read_c0_ebase(),read_c0_watchlo0(),read_c0_watchhi0());
++
++#ifdef CONFIG_TANGO2_SMP863X
++	/* Calculating CPU/System frequencies */
++	em8xxx_cpu_frequency = tango2_get_cpuclock();
++	em8xxx_sys_frequency = tango2_get_sysclock();
++#endif
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++	tango2_device_info();
++#endif
++	return(0);
++}
++
++void __init prom_free_prom_memory(void)
++{
++}
++
++void __init prom_fixup_mem_map(unsigned long start, unsigned long end)
++{
++}
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK)
++int tango2_pcidev_irq_map(const int pci_idsel, const int int_num)
++{
++	int irq = pcidev_intr_num(sigptr, pci_idsel, int_num);
++	if (irq >= 0)
++		irq += IRQ_CONTROLLER_IRQ_BASE;
++	return(irq);
++}
++
++int tango2_isaide_irq_map(void)
++{
++	int irq = isaide_intr_num(sigptr);
++	if (irq >= 0)
++		irq += IRQ_CONTROLLER_IRQ_BASE;
++	return(irq);
++}
++
++int tango2_isaide_cs_select(void)
++{
++	return(isaide_cs_select(sigptr));
++}
++
++int tango2_isaide_timing_slot(void)
++{
++	return(isaide_timing_slot(sigptr));
++}
++
++int tango2_isaide_enabled(void)
++{
++	return(isaide_enabled(sigptr));
++}
++
++int tango2_bmide_enabled(void)
++{
++	return(bmide_enabled(sigptr));
++}
++
++int tango2_sata_enabled(void)
++{
++	return(sata_enabled(sigptr));
++}
++
++int tango2_pci_host_enabled(void)
++{
++	return(pci_host_enabled(sigptr));
++}
++
++int tango2_ir_enabled(void)
++{
++	return(ir_enabled(sigptr));
++}
++
++int tango2_fip_enabled(void)
++{
++	return(fip_enabled(sigptr));
++}
++
++int tango2_ethernet_enabled(void)
++{
++	return(ethernet_enabled(sigptr));
++}
++
++int tango2_sdio_enabled(void)
++{
++	return(sdio_enabled(sigptr));
++}
++
++int tango2_usb_enabled(void)
++{
++	return(usb_enabled(sigptr));
++}
++
++int tango2_i2cm_enabled(void)
++{
++	return(i2cm_enabled(sigptr));
++}
++
++int tango2_i2cs_enabled(void)
++{
++	return(i2cs_enabled(sigptr));
++}
++
++int tango2_scard_enabled(void) 
++{
++	return(scard_enabled(sigptr));
++}
++
++int tango2_gnet_enabled(void) 
++{
++	return(gnet_enabled(sigptr));
++}
++
++int tango2_pcidev_enabled(const int pci_idsel)
++{
++	if (tango2_pci_host_enabled())
++		return(pcidev_enabled(sigptr, pci_idsel));
++	else
++		return(0);
++}
++
++int tango2_ethernet_getmac(unsigned char *mac)
++{
++	if (tango2_ethernet_enabled() == 0)
++		return(0);
++	else {
++		mac[0] = (sigptr->hwinfo.mac_hi >> 8) & 0xff;
++		mac[1] = (sigptr->hwinfo.mac_hi >> 0) & 0xff;
++		mac[2] = (sigptr->hwinfo.mac_lo >> 24) & 0xff;
++		mac[3] = (sigptr->hwinfo.mac_lo >> 16) & 0xff;
++		mac[4] = (sigptr->hwinfo.mac_lo >> 8) & 0xff;
++		mac[5] = (sigptr->hwinfo.mac_lo >> 0) & 0xff;
++	}
++	return(1);
++}
++
++#elif defined(CONFIG_TANGO2_XENV)
++
++int tango2_isaide_enabled(void)
++{
++	return((((xenv_enabled_devices >> ISAIDE_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_bmide_enabled(void)
++{
++	return((((xenv_enabled_devices >> BMIDE_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_sata_enabled(void)
++{
++	return((((xenv_enabled_devices >> SATA_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_pci_host_enabled(void)
++{
++	return((((xenv_enabled_devices >> PCIHOST_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_ir_enabled(void)
++{
++	return((((xenv_enabled_devices >> IR_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_fip_enabled(void)
++{
++	return((((xenv_enabled_devices >> FIP_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_ethernet_enabled(void)
++{
++	return((((xenv_enabled_devices >> ETHERNET_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_sdio_enabled(void)
++{
++	return((((xenv_enabled_devices >> SDIO_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_usb_enabled(void)
++{
++	return((((xenv_enabled_devices >> USB_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_i2cm_enabled(void)
++{
++	return((((xenv_enabled_devices >> I2CM_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_i2cs_enabled(void)
++{
++	return((((xenv_enabled_devices >> I2CS_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_scard_enabled(void) 
++{
++	return((((xenv_enabled_devices >> SCARD_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_gnet_enabled(void) 
++{
++	return((((xenv_enabled_devices >> GNET_SHIFT) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_pcidev_enabled(const int pci_idsel)
++{
++	return((((xenv_enabled_devices >> (pci_idsel - 1 + PCI1_SHIFT)) & 1) != 0) ? 1 : 0);
++}
++
++int tango2_ethernet_getmac(unsigned char *mac)
++{
++	if (tango2_ethernet_enabled() == 0)
++		return(0);
++	else if ((xenv_mac_hi != 0) || (xenv_mac_lo != 0)) {
++		mac[0] = (xenv_mac_hi >> 8) & 0xff;
++		mac[1] = (xenv_mac_hi >> 0) & 0xff;
++		mac[2] = (xenv_mac_lo >> 24) & 0xff;
++		mac[3] = (xenv_mac_lo >> 16) & 0xff;
++		mac[4] = (xenv_mac_lo >> 8) & 0xff;
++		mac[5] = (xenv_mac_lo >> 0) & 0xff;
++		return(1);
++	}
++	return(0);
++}
++
++int tango2_pcidev_irq_map(const int pci_idsel, const int int_num)
++{
++	int route = xenv_pcidev_irq_route[pci_idsel - 1];
++	int irq;
++
++	irq = (int)((route >> (int_num * 8)) & 0x3); /* int_num: 0-3 = INTA-D */
++	if (irq >= 0)
++		irq += (IRQ_CONTROLLER_IRQ_BASE + LOG2_CPU_PCI_INTA);
++	return(irq);
++}
++
++int tango2_isaide_irq_map(void)
++{
++	int irq = 0;
++
++	if (tango2_isaide_enabled() == 0)
++		return(-1);
++
++	if (xenv_isaide_irq >= 0)
++		irq = xenv_isaide_irq + (IRQ_CONTROLLER_IRQ_BASE + LOG2_CPU_PCI_INTA);
++	return(irq);
++}
++
++int tango2_isaide_cs_select(void)
++{
++	int i;
++	unsigned long cs_config = (gbus_read_uint32(pGBus, REG_BASE_host_interface + PB_CS_config) >> 12) & 0xf;
++
++	if (tango2_isaide_enabled() == 0)
++		return(-1);
++
++	for (i = 0; i < 4; i++) {
++		if ((cs_config & 0x1) != 0)
++			return(i);
++		else
++			cs_config >>= 1;
++	}
++	return(-1);
++}
++
++int tango2_isaide_timing_slot(void)
++{
++	return(xenv_isaide_timing_slot & 0x7);
++}
++
++#endif 
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++
++static int tango2_device_info(void)
++{
++	int i;
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK)
++	printk("SMP863x Enabled Devices under Linux/SIGBLOCK = 0x%08lx\n ", sigptr->hwinfo.dev_enabled);
++#else
++	printk("SMP863x Enabled Devices under Linux/XENV 0x%08lx = 0x%08lx\n ", xenv_gbus_addr, xenv_enabled_devices);
++#endif
++	if (tango2_isaide_enabled())
++		printk(" ISA/IDE");
++	if (tango2_bmide_enabled())
++		printk(" BM/IDE");
++	if (tango2_pci_host_enabled())
++		printk(" PCIHost");
++	if (tango2_ethernet_enabled())
++		printk(" Ethernet");
++	if (tango2_ir_enabled())
++		printk(" IR");
++	if (tango2_fip_enabled())
++		printk(" FIP");
++	if (tango2_i2cm_enabled())
++		printk(" I2CM");
++	if (tango2_i2cs_enabled())
++		printk(" I2CS");
++	if (tango2_sdio_enabled())
++		printk(" SDIO");
++	if (tango2_usb_enabled())
++		printk(" USB");
++	for (i = 1; i <= 6; i++) {
++		if (tango2_pcidev_enabled(i))
++			printk(" PCIDev%d", i);
++	}
++	if (tango2_sata_enabled())
++		printk(" SATA");
++	if (tango2_scard_enabled())
++		printk(" SCARD");
++	if (tango2_gnet_enabled())
++		printk(" GNET");
++	printk("\n");
++}
++
++EXPORT_SYMBOL(tango2_pcidev_irq_map);
++EXPORT_SYMBOL(tango2_isaide_irq_map);
++EXPORT_SYMBOL(tango2_isaide_cs_select);
++EXPORT_SYMBOL(tango2_isaide_timing_slot);
++EXPORT_SYMBOL(tango2_isaide_enabled);
++EXPORT_SYMBOL(tango2_bmide_enabled);
++EXPORT_SYMBOL(tango2_sata_enabled);
++EXPORT_SYMBOL(tango2_pci_host_enabled);
++EXPORT_SYMBOL(tango2_ir_enabled);
++EXPORT_SYMBOL(tango2_fip_enabled);
++EXPORT_SYMBOL(tango2_ethernet_enabled);
++EXPORT_SYMBOL(tango2_sdio_enabled);
++EXPORT_SYMBOL(tango2_usb_enabled);
++EXPORT_SYMBOL(tango2_scard_enabled);
++EXPORT_SYMBOL(tango2_gnet_enabled);
++EXPORT_SYMBOL(tango2_i2cm_enabled);
++EXPORT_SYMBOL(tango2_i2cs_enabled);
++EXPORT_SYMBOL(tango2_pcidev_enabled);
++EXPORT_SYMBOL(tango2_ethernet_getmac);
++
++#if defined(CONFIG_TANGO2_XENV)
++EXPORT_SYMBOL(xenv_scard_5v_pin);
++EXPORT_SYMBOL(xenv_scard_off_pin);
++EXPORT_SYMBOL(xenv_scard_cmd_pin);
++#endif
++
++#endif /* CONFIG_TANGO2_SIG_BLOCK || defined(CONFIG_TANGO2_XENV) */
++
++EXPORT_SYMBOL(tango2_get_sysclock);
++EXPORT_SYMBOL(tango2_get_cpuclock);
++
++RMuint32 gbus_read_dram_uint32(struct gbus *pgbus, RMuint32 byte_address);
++RMuint16 gbus_read_dram_uint16(struct gbus *pgbus, RMuint32 byte_address);
++RMuint8 gbus_read_dram_uint8(struct gbus *pgbus, RMuint32 byte_address);
++void gbus_write_dram_uint32(struct gbus *pgbus, RMuint32 byte_address, RMuint32 data);
++void gbus_write_dram_uint16(struct gbus *pgbus, RMuint32 byte_address, RMuint16 data);
++void gbus_write_dram_uint8(struct gbus *pgbus, RMuint32 byte_address, RMuint8 data);
++
++#define TMP_REMAPPED_REG   CPU_remap4
++#define TMP_REMAPPED_BASE  CPU_remap4_address
++
++static RMuint32 set_remap(RMuint32 remap_reg, RMuint32 value)
++{
++	RMuint32 orig = *((volatile RMuint32 *)KSEG1ADDR(REG_BASE_cpu_block + remap_reg));
++	if (orig != value) {
++		*((volatile RMuint32 *)KSEG1ADDR(REG_BASE_cpu_block + remap_reg)) = value;
++		iob();
++	}
++	return(orig);
++}
++
++RMuint32 gbus_read_uint32(struct gbus *pgbus, RMuint32 byte_address)
++{
++	RMuint32 remap;
++	RMuint32 tmp;
++
++	if (byte_address < (MEM_BASE_dram_controller_0 + 0x10000000))
++		return gbus_read_dram_uint32(pgbus, byte_address);
++	else if (byte_address < (MEM_BASE_dram_controller_1 + 0x10000000))
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++		if (byte_address < (MEM_BASE_dram_controller_1 + em86xx_tlb_dram1_map_size))
++			return gbus_read_dram_uint32(pgbus, byte_address);
++		else {
++			printk("accessing non-existed DRAM1 area 0x%08lx.\n", byte_address);
++			return(0);
++		}
++#else
++		return gbus_read_dram_uint32(pgbus, byte_address);
++#endif
++	else {
++		unsigned long flags;
++		local_irq_save(flags); // Ensure remap won't be changed 
++		// Use CPU_remapx to temporarily map the address
++		remap = set_remap(TMP_REMAPPED_REG, byte_address & 0xfc000000);
++		tmp = *((volatile RMuint32 *)KSEG1ADDR(TMP_REMAPPED_BASE + (byte_address & 0x03ffffff)));
++		set_remap(TMP_REMAPPED_REG, remap);
++		local_irq_restore(flags);
++		return(tmp);
++	}
++}
++
++RMuint16 gbus_read_uint16(struct gbus *pgbus, RMuint32 byte_address)
++{
++	RMuint32 remap;
++	RMuint16 tmp;
++
++	if (byte_address < (MEM_BASE_dram_controller_0 + 0x10000000))
++		return gbus_read_dram_uint16(pgbus, byte_address);
++	else if (byte_address < (MEM_BASE_dram_controller_1 + 0x10000000))
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++		if (byte_address < (MEM_BASE_dram_controller_1 + em86xx_tlb_dram1_map_size))
++			return gbus_read_dram_uint16(pgbus, byte_address);
++		else {
++			printk("accessing non-existed DRAM1 area 0x%08lx.\n", byte_address);
++			return(0);
++		}
++#else
++		return gbus_read_dram_uint16(pgbus, byte_address);
++#endif
++	else {
++		unsigned long flags;
++		local_irq_save(flags); // Ensure remap won't be changed 
++		// Use CPU_remapx to temporarily map the address
++		remap = set_remap(TMP_REMAPPED_REG, byte_address & 0xfc000000);
++		tmp = *((volatile RMuint16 *)KSEG1ADDR(TMP_REMAPPED_BASE + (byte_address & 0x03ffffff)));
++		set_remap(TMP_REMAPPED_REG, remap);
++		local_irq_restore(flags);
++		return(tmp & 0xffff);
++	}
++}
++
++RMuint8 gbus_read_uint8(struct gbus *pgbus, RMuint32 byte_address)
++{
++	RMuint32 remap;
++	RMuint8 tmp;
++
++	if (byte_address < (MEM_BASE_dram_controller_0 + 0x10000000))
++		return gbus_read_dram_uint8(pgbus, byte_address);
++	else if (byte_address < (MEM_BASE_dram_controller_1 + 0x10000000))
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++		if (byte_address < (MEM_BASE_dram_controller_1 + em86xx_tlb_dram1_map_size))
++			return gbus_read_dram_uint8(pgbus, byte_address);
++		else {
++			printk("accessing non-existed DRAM1 area 0x%08lx.\n", byte_address);
++			return(0);
++		}
++#else
++		return gbus_read_dram_uint8(pgbus, byte_address);
++#endif
++	else {
++		unsigned long flags;
++		local_irq_save(flags); // Ensure remap won't be changed 
++		// Use CPU_remapx to temporarily map the address
++		remap = set_remap(TMP_REMAPPED_REG, byte_address & 0xfc000000);
++		tmp = *((volatile RMuint8 *)KSEG1ADDR(TMP_REMAPPED_BASE + (byte_address & 0x03ffffff)));
++		set_remap(TMP_REMAPPED_REG, remap);
++		local_irq_restore(flags);
++		return(tmp & 0xff);
++	}
++}
++
++void gbus_write_uint32(struct gbus *pgbus, RMuint32 byte_address, RMuint32 data)
++{
++	RMuint32 remap;
++
++	if (byte_address < (MEM_BASE_dram_controller_0 + 0x10000000))
++		gbus_write_dram_uint32(pgbus, byte_address, data);
++	else if (byte_address < (MEM_BASE_dram_controller_1 + 0x10000000))
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++		if (byte_address < (MEM_BASE_dram_controller_1 + em86xx_tlb_dram1_map_size))
++			gbus_write_dram_uint32(pgbus, byte_address, data);
++		else 
++			printk("accessing non-existed DRAM1 area 0x%08lx.\n", byte_address);
++#else
++		gbus_write_dram_uint32(pgbus, byte_address, data);
++#endif
++	else {
++		unsigned long flags;
++		local_irq_save(flags); // Ensure remap won't be changed 
++		// Use CPU_remapx to temporarily map the address
++		remap = set_remap(TMP_REMAPPED_REG, byte_address & 0xfc000000);
++		*((volatile RMuint32 *)KSEG1ADDR(TMP_REMAPPED_BASE + (byte_address & 0x03ffffff))) = data;
++		set_remap(TMP_REMAPPED_REG, remap);
++		local_irq_restore(flags);
++	}
++	__sync();
++}
++
++void gbus_write_uint16(struct gbus *pgbus, RMuint32 byte_address, RMuint16 data)
++{
++	RMuint32 remap;
++
++	if (byte_address < (MEM_BASE_dram_controller_0 + 0x10000000))
++		gbus_write_dram_uint16(pgbus, byte_address, data);
++	else if (byte_address < (MEM_BASE_dram_controller_1 + 0x10000000))
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++		if (byte_address < (MEM_BASE_dram_controller_1 + em86xx_tlb_dram1_map_size))
++			gbus_write_dram_uint16(pgbus, byte_address, data);
++		else 
++			printk("accessing non-existed DRAM1 area 0x%08lx.\n", byte_address);
++#else
++		gbus_write_dram_uint16(pgbus, byte_address, data);
++#endif
++	else {
++		unsigned long flags;
++		local_irq_save(flags); // Ensure remap won't be changed 
++		// Use CPU_remapx to temporarily map the address
++		remap = set_remap(TMP_REMAPPED_REG, byte_address & 0xfc000000);
++		*((volatile RMuint16 *)KSEG1ADDR(TMP_REMAPPED_BASE + (byte_address & 0x03ffffff))) = (data & 0xffff);
++		set_remap(TMP_REMAPPED_REG, remap);
++		local_irq_restore(flags);
++	}
++	__sync();
++}
++
++void gbus_write_uint8(struct gbus *pgbus, RMuint32 byte_address, RMuint8 data)
++{
++	RMuint32 remap;
++
++	if (byte_address < (MEM_BASE_dram_controller_0 + 0x10000000))
++		gbus_write_dram_uint8(pgbus, byte_address, data);
++	else if (byte_address < (MEM_BASE_dram_controller_1 + 0x10000000))
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1 
++		if (byte_address < (MEM_BASE_dram_controller_1 + em86xx_tlb_dram1_map_size))
++			gbus_write_dram_uint8(pgbus, byte_address, data);
++		else 
++			printk("accessing non-existed DRAM1 area 0x%08lx.\n", byte_address);
++#else
++		gbus_write_dram_uint8(pgbus, byte_address, data);
++#endif
++	else {
++		unsigned long flags;
++		local_irq_save(flags); // Ensure remap won't be changed 
++		// Use CPU_remapx to temporarily map the address
++		remap = set_remap(TMP_REMAPPED_REG, byte_address & 0xfc000000);
++		*((volatile RMuint8 *)KSEG1ADDR(TMP_REMAPPED_BASE + (byte_address & 0x03ffffff))) = (data & 0xff);
++		set_remap(TMP_REMAPPED_REG, remap);
++		local_irq_restore(flags);
++	}
++	__sync();
++}
++
++EXPORT_SYMBOL(gbus_read_uint8);
++EXPORT_SYMBOL(gbus_read_uint16);
++EXPORT_SYMBOL(gbus_read_uint32);
++EXPORT_SYMBOL(gbus_write_uint8);
++EXPORT_SYMBOL(gbus_write_uint16);
++EXPORT_SYMBOL(gbus_write_uint32);
++
++#ifdef CONFIG_TANGO2_USE_TLB_REMAP_DRAM1
++EXPORT_SYMBOL(em86xx_tlb_dram1_map_base);
++EXPORT_SYMBOL(em86xx_tlb_dram1_map_size);
++#endif
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/setup.c linuxmips-2.4.30/arch/mips/tango2/setup.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/setup.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/setup.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,214 @@
++/*
++ * Copyright 2001 MontaVista Software Inc.
++ * Author: Jun Sun, jsun@mvista.com or jsun@junsun.net
++ *
++ * arch/mips/tango2/setup.c
++ *     The setup file for tango2.
++ *
++ * This program is free software; you can redistribute  it and/or modify it
++ * under  the terms of  the GNU General  Public License as published by the
++ * Free Software Foundation;  either version 2 of the  License, or (at your
++ * option) any later version.
++ *
++ */
++
++#include <linux/config.h>
++#include <linux/init.h>
++#include <linux/delay.h>
++#include <linux/irq.h>
++#include <linux/interrupt.h>
++#include <linux/serial.h>
++#include <linux/types.h>
++#include <linux/string.h>	/* for memset */
++#include <linux/ioport.h>
++#include <linux/console.h>
++
++#include <asm/reboot.h>
++#include <asm/io.h>
++#include <asm/time.h>
++#include <asm/pgtable.h>
++#include <asm/processor.h>
++#include <asm/reboot.h>
++#include <asm/system.h>
++
++#include <asm/tango2/tango2.h>
++#include <asm/tango2/rmdefs.h>
++
++void tango2_restart(char *command)
++{
++	unsigned long flags, tmp;
++
++	local_irq_save(flags); /* Disable interrupts */
++
++#ifndef CONFIG_TANGO2_USE_CPU_CLOCK
++	/* Disable timer */
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_time0_ctrl, 0);
++#endif
++
++#if (EM86XX_REVISION > 3)
++        /* Resetting Tango2 EHCI */
++        tmp = gbus_read_uint32(pGBus, REG_BASE_host_interface + 0x1410);
++        tmp &= ~1;
++        gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x1410, tmp);
++        mdelay(5);
++
++        /* Resetting Tango2 OHCI */
++        gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x1514, 1<<31);
++        gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x1504, 0);
++        mdelay(5);
++
++	/* Resetting internal USB PHY in USB Control space */
++	tmp = gbus_read_uint32(pGBus, REG_BASE_host_interface + 0x1700);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x1700, tmp | 1);
++	udelay(30);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x1700, tmp);
++	mdelay(5);
++
++	/* Resetting internal OHCI in USB OHCI space*/
++	tmp = gbus_read_uint32(pGBus, REG_BASE_host_interface + 0x1508);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x1508, tmp | 0x01);
++
++	/* Reseting OHCI dpll, it says the bit is for simulation */
++	tmp = gbus_read_uint32(pGBus, REG_BASE_host_interface + 0x1700);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x1700, tmp | (1<<19));
++	mdelay(1);
++
++	/* Resetting Tango2 Ethernet interface */
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x7018, 0);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x701c, 0);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + 0x7000, 1);
++	for (tmp = 0; (tmp < 10) && (gbus_read_uint32(pGBus, REG_BASE_host_interface + 0x7000) & 1); tmp++)
++		mdelay(1);
++#endif
++
++	/* Resetting Video block */
++	gbus_write_uint32(pGBus, REG_BASE_display_block + G2L_RESET_CONTROL, 3);
++	gbus_write_uint32(pGBus, REG_BASE_display_block + G2L_RESET_CONTROL, 2);
++
++	/* Resetting MPEG0 block */
++	gbus_write_uint32(pGBus, REG_BASE_mpeg_engine_0 + G2L_RESET_CONTROL, 3);
++	gbus_write_uint32(pGBus, REG_BASE_mpeg_engine_0 + G2L_RESET_CONTROL, 2);
++
++	/* Resetting MPEG1 block */
++	gbus_write_uint32(pGBus, REG_BASE_mpeg_engine_1 + G2L_RESET_CONTROL, 3);
++	gbus_write_uint32(pGBus, REG_BASE_mpeg_engine_1 + G2L_RESET_CONTROL, 2);
++
++	/* Resetting Transport demux block */
++	gbus_write_uint32(pGBus, REG_BASE_demux_engine + G2L_RESET_CONTROL, 3);
++	gbus_write_uint32(pGBus, REG_BASE_demux_engine + G2L_RESET_CONTROL, 2);
++
++	/* Resetting Audio0 block */
++	gbus_write_uint32(pGBus, REG_BASE_audio_engine_0 + G2L_RESET_CONTROL, 3);
++	gbus_write_uint32(pGBus, REG_BASE_audio_engine_0 + G2L_RESET_CONTROL, 2);
++
++	/* Resetting Audio1 block */
++	gbus_write_uint32(pGBus, REG_BASE_audio_engine_1 + G2L_RESET_CONTROL, 3);
++	gbus_write_uint32(pGBus, REG_BASE_audio_engine_1 + G2L_RESET_CONTROL, 2);
++
++	/* Resetting host interface */
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + G2L_RESET_CONTROL, 3);
++	gbus_write_uint32(pGBus, REG_BASE_host_interface + G2L_RESET_CONTROL, 2);
++
++	/* Now to handle CPU side */
++        set_c0_status(ST0_BEV | ST0_ERL);
++        change_c0_config(CONF_CM_CMASK, CONF_CM_UNCACHED);
++        flush_cache_all();
++        write_c0_wired(0);
++        __asm__ __volatile__("jr\t%0"::"r"(0xbfc00000));
++}
++
++void tango2_halt(void)
++{
++        printk(KERN_NOTICE "\n** You can safely turn off the power\n");
++        while (1);
++}
++
++void tango2_power_off(void)
++{
++        tango2_halt();
++}
++
++static void __init tango2_time_init(void)
++{
++//	emprintk("\n");
++
++#ifdef CONFIG_QUICKTURN
++	mips_hpt_frequency = TANGO2_CPU_FREQUENCY/2;
++#elif defined(CONFIG_TANGO2_SMP863X)
++	{
++		extern unsigned long em8xxx_cpu_frequency;
++		mips_hpt_frequency = em8xxx_cpu_frequency / 2;
++	}
++#else
++#error "Unsupported platform"
++#endif
++}
++
++// CPU_time0_load
++//   clock / HZ / (2 * prescale)
++// CPU_time0_ctrl
++//   PS(D2-3) : prescale. 0x00 = 1, 0x01 = 16, 0x10 = 256
++//     There is a bug, and the actual prescale is 0x01 = 32, 0x10 = 512
++//   M(D6) : periodic mode
++//   E(D7) : enable
++
++extern unsigned long em8xxx_sys_frequency;
++
++#define TICKS_PER_SEC           em8xxx_sys_frequency
++#define TIMER_PRESCALE          32
++#define TIMER_PRESCALEBITS      5
++#define TIMER_RELOAD            ((TICKS_PER_SEC / HZ) >> (TIMER_PRESCALEBITS))
++
++#define TIMER_ENABLE            0x80    // D7
++#define TIMER_PERIODIC          0x40    // D6
++#define TIMER_PRESCALE_1        0x00    // D[2-3] = 00b
++#define TIMER_PRESCALE_32       0x04    // D[2-3] = 01b
++#define TIMER_PRESCALE_512      0x08    // D[2-3] = 10b
++
++static void __init tango2_timer_setup(struct irqaction *irq)
++{
++//	emprintk("\n");
++
++#ifdef CONFIG_TANGO2_USE_CPU_CLOCK
++      	setup_irq(MIPS_CPU_IRQ_BASE+STATUSB_IP7-STATUSB_IP0, irq);
++#else
++	// CPU_time0_load register contains just 16-bits value
++	// So, take cate not the value to overflow
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_time0_load, TIMER_RELOAD);
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_time0_ctrl, TIMER_ENABLE | TIMER_PERIODIC | TIMER_PRESCALE_32);
++	gbus_write_uint32(pGBus, REG_BASE_cpu_block + CPU_time0_clr, 1);
++
++	/* Setup Timer0 as the source */
++	setup_irq(LOG2_CPU_TIMER0_INT + IRQ_CONTROLLER_IRQ_BASE, irq);
++#endif
++}
++
++
++void __init tango2_setup(void)
++{
++//	emprintk("\n");
++
++#ifdef CONFIG_VT
++#if defined(CONFIG_DUMMY_CONSOLE)
++	conswitchp = &dummy_con;
++#endif
++#endif
++
++        board_time_init = tango2_time_init;
++        board_timer_setup = tango2_timer_setup;
++
++        _machine_restart = tango2_restart;
++        _machine_halt = tango2_halt;
++        _machine_power_off = tango2_power_off;
++
++	printk("SMP863x Chip (Configured: REVISION=0x%x, Detected: 0x%x/0x%x)\n", 
++			EM86XX_REVISION, 
++			gbus_read_uint32(pGBus, REG_BASE_host_interface + PCI_REG0) & 0xffff,
++			gbus_read_uint32(pGBus, REG_BASE_host_interface + PCI_REG1) & 0xff);
++
++	/* I/O regions */
++	ioport_resource.start = iomem_resource.start = 0x0;
++	ioport_resource.end = 0x80000000UL - 1;
++	iomem_resource.end = 0x80000000UL - 1;
++}
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/sha1sum.c linuxmips-2.4.30/arch/mips/tango2/sha1sum.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/sha1sum.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/sha1sum.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,350 @@
++/* sha1sum.c - print SHA-1 Message-Digest Algorithm 
++ * Copyright (C) 1998, 1999, 2000, 2001 Free Software Foundation, Inc.
++ * Copyright (C) 2004 g10 Code GmbH
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2, or (at your option) any
++ * later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software Foundation,
++ * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ */
++
++/* SHA-1 coden take from gnupg 1.3.92. 
++
++   Note, that this is a simple tool to be used for MS Windows.
++*/
++
++#if 0
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <assert.h>
++#include <errno.h>
++#else
++#ifdef __KERNEL__
++#include <linux/config.h>
++#include <linux/string.h>
++#else
++#include "zbootcfg.h"
++#include "util.h"
++#include "uart.h"
++#endif
++#include "sha1sum.h"
++#endif
++
++#if defined(CONFIG_XENV_SUPPORT) || defined(CONFIG_TANGO2_XENV)
++
++#undef BIG_ENDIAN_HOST
++#ifndef __KERNEL__
++typedef unsigned int u32;
++#endif
++
++/****************
++ * Rotate a 32 bit integer by n bytes
++ */
++#if defined(__GNUC__) && defined(__i386__)
++static inline u32
++rol( u32 x, int n)
++{
++	__asm__("roll %%cl,%0"
++		:"=r" (x)
++		:"0" (x),"c" (n));
++	return x;
++}
++#else
++#define rol(x,n) ( ((x) << (n)) | ((x) >> (32-(n))) )
++#endif
++
++
++typedef struct {
++    u32  h0,h1,h2,h3,h4;
++    u32  nblocks;
++    unsigned char buf[64];
++    int  count;
++} SHA1_CONTEXT;
++
++
++
++static void
++sha1_init( SHA1_CONTEXT *hd )
++{
++    hd->h0 = 0x67452301;
++    hd->h1 = 0xefcdab89;
++    hd->h2 = 0x98badcfe;
++    hd->h3 = 0x10325476;
++    hd->h4 = 0xc3d2e1f0;
++    hd->nblocks = 0;
++    hd->count = 0;
++}
++
++
++/****************
++ * Transform the message X which consists of 16 32-bit-words
++ */
++static void
++transform( SHA1_CONTEXT *hd, const unsigned char *data )
++{
++    u32 a,b,c,d,e,tm;
++    u32 x[16];
++
++    /* get values from the chaining vars */
++    a = hd->h0;
++    b = hd->h1;
++    c = hd->h2;
++    d = hd->h3;
++    e = hd->h4;
++
++#ifdef BIG_ENDIAN_HOST
++    memcpy( x, data, 64 );
++#else
++    { int i;
++      unsigned char *p2;
++      for(i=0, p2=(unsigned char*)x; i < 16; i++, p2 += 4 ) {
++	p2[3] = *data++;
++	p2[2] = *data++;
++	p2[1] = *data++;
++	p2[0] = *data++;
++      }
++    }
++#endif
++
++
++#define K1  0x5A827999L
++#define K2  0x6ED9EBA1L
++#define K3  0x8F1BBCDCL
++#define K4  0xCA62C1D6L
++#define F1(x,y,z)   ( z ^ ( x & ( y ^ z ) ) )
++#define F2(x,y,z)   ( x ^ y ^ z )
++#define F3(x,y,z)   ( ( x & y ) | ( z & ( x | y ) ) )
++#define F4(x,y,z)   ( x ^ y ^ z )
++
++
++#define M(i) ( tm =   x[i&0x0f] ^ x[(i-14)&0x0f] \
++		    ^ x[(i-8)&0x0f] ^ x[(i-3)&0x0f] \
++	       , (x[i&0x0f] = rol(tm,1)) )
++
++#define R(a,b,c,d,e,f,k,m)  do { e += rol( a, 5 )     \
++				      + f( b, c, d )  \
++				      + k	      \
++				      + m;	      \
++				 b = rol( b, 30 );    \
++			       } while(0)
++    R( a, b, c, d, e, F1, K1, x[ 0] );
++    R( e, a, b, c, d, F1, K1, x[ 1] );
++    R( d, e, a, b, c, F1, K1, x[ 2] );
++    R( c, d, e, a, b, F1, K1, x[ 3] );
++    R( b, c, d, e, a, F1, K1, x[ 4] );
++    R( a, b, c, d, e, F1, K1, x[ 5] );
++    R( e, a, b, c, d, F1, K1, x[ 6] );
++    R( d, e, a, b, c, F1, K1, x[ 7] );
++    R( c, d, e, a, b, F1, K1, x[ 8] );
++    R( b, c, d, e, a, F1, K1, x[ 9] );
++    R( a, b, c, d, e, F1, K1, x[10] );
++    R( e, a, b, c, d, F1, K1, x[11] );
++    R( d, e, a, b, c, F1, K1, x[12] );
++    R( c, d, e, a, b, F1, K1, x[13] );
++    R( b, c, d, e, a, F1, K1, x[14] );
++    R( a, b, c, d, e, F1, K1, x[15] );
++    R( e, a, b, c, d, F1, K1, M(16) );
++    R( d, e, a, b, c, F1, K1, M(17) );
++    R( c, d, e, a, b, F1, K1, M(18) );
++    R( b, c, d, e, a, F1, K1, M(19) );
++    R( a, b, c, d, e, F2, K2, M(20) );
++    R( e, a, b, c, d, F2, K2, M(21) );
++    R( d, e, a, b, c, F2, K2, M(22) );
++    R( c, d, e, a, b, F2, K2, M(23) );
++    R( b, c, d, e, a, F2, K2, M(24) );
++    R( a, b, c, d, e, F2, K2, M(25) );
++    R( e, a, b, c, d, F2, K2, M(26) );
++    R( d, e, a, b, c, F2, K2, M(27) );
++    R( c, d, e, a, b, F2, K2, M(28) );
++    R( b, c, d, e, a, F2, K2, M(29) );
++    R( a, b, c, d, e, F2, K2, M(30) );
++    R( e, a, b, c, d, F2, K2, M(31) );
++    R( d, e, a, b, c, F2, K2, M(32) );
++    R( c, d, e, a, b, F2, K2, M(33) );
++    R( b, c, d, e, a, F2, K2, M(34) );
++    R( a, b, c, d, e, F2, K2, M(35) );
++    R( e, a, b, c, d, F2, K2, M(36) );
++    R( d, e, a, b, c, F2, K2, M(37) );
++    R( c, d, e, a, b, F2, K2, M(38) );
++    R( b, c, d, e, a, F2, K2, M(39) );
++    R( a, b, c, d, e, F3, K3, M(40) );
++    R( e, a, b, c, d, F3, K3, M(41) );
++    R( d, e, a, b, c, F3, K3, M(42) );
++    R( c, d, e, a, b, F3, K3, M(43) );
++    R( b, c, d, e, a, F3, K3, M(44) );
++    R( a, b, c, d, e, F3, K3, M(45) );
++    R( e, a, b, c, d, F3, K3, M(46) );
++    R( d, e, a, b, c, F3, K3, M(47) );
++    R( c, d, e, a, b, F3, K3, M(48) );
++    R( b, c, d, e, a, F3, K3, M(49) );
++    R( a, b, c, d, e, F3, K3, M(50) );
++    R( e, a, b, c, d, F3, K3, M(51) );
++    R( d, e, a, b, c, F3, K3, M(52) );
++    R( c, d, e, a, b, F3, K3, M(53) );
++    R( b, c, d, e, a, F3, K3, M(54) );
++    R( a, b, c, d, e, F3, K3, M(55) );
++    R( e, a, b, c, d, F3, K3, M(56) );
++    R( d, e, a, b, c, F3, K3, M(57) );
++    R( c, d, e, a, b, F3, K3, M(58) );
++    R( b, c, d, e, a, F3, K3, M(59) );
++    R( a, b, c, d, e, F4, K4, M(60) );
++    R( e, a, b, c, d, F4, K4, M(61) );
++    R( d, e, a, b, c, F4, K4, M(62) );
++    R( c, d, e, a, b, F4, K4, M(63) );
++    R( b, c, d, e, a, F4, K4, M(64) );
++    R( a, b, c, d, e, F4, K4, M(65) );
++    R( e, a, b, c, d, F4, K4, M(66) );
++    R( d, e, a, b, c, F4, K4, M(67) );
++    R( c, d, e, a, b, F4, K4, M(68) );
++    R( b, c, d, e, a, F4, K4, M(69) );
++    R( a, b, c, d, e, F4, K4, M(70) );
++    R( e, a, b, c, d, F4, K4, M(71) );
++    R( d, e, a, b, c, F4, K4, M(72) );
++    R( c, d, e, a, b, F4, K4, M(73) );
++    R( b, c, d, e, a, F4, K4, M(74) );
++    R( a, b, c, d, e, F4, K4, M(75) );
++    R( e, a, b, c, d, F4, K4, M(76) );
++    R( d, e, a, b, c, F4, K4, M(77) );
++    R( c, d, e, a, b, F4, K4, M(78) );
++    R( b, c, d, e, a, F4, K4, M(79) );
++
++    /* Update chaining vars */
++    hd->h0 += a;
++    hd->h1 += b;
++    hd->h2 += c;
++    hd->h3 += d;
++    hd->h4 += e;
++}
++
++
++/* Update the message digest with the contents
++ * of INBUF with length INLEN.
++ */
++static void
++sha1_write( SHA1_CONTEXT *hd, const unsigned char *inbuf, size_t inlen)
++{
++    if( hd->count == 64 ) { /* flush the buffer */
++	transform( hd, hd->buf );
++	hd->count = 0;
++	hd->nblocks++;
++    }
++    if( !inbuf )
++	return;
++    if( hd->count ) {
++	for( ; inlen && hd->count < 64; inlen-- )
++	    hd->buf[hd->count++] = *inbuf++;
++	sha1_write( hd, NULL, 0 );
++	if( !inlen )
++	    return;
++    }
++
++    while( inlen >= 64 ) {
++	transform( hd, inbuf );
++	hd->count = 0;
++	hd->nblocks++;
++	inlen -= 64;
++	inbuf += 64;
++    }
++    for( ; inlen && hd->count < 64; inlen-- )
++	hd->buf[hd->count++] = *inbuf++;
++}
++
++
++/* The routine final terminates the computation and
++ * returns the digest.
++ * The handle is prepared for a new cycle, but adding bytes to the
++ * handle will the destroy the returned buffer.
++ * Returns: 20 bytes representing the digest.
++ */
++
++static void
++sha1_final(SHA1_CONTEXT *hd)
++{
++    u32 t, msb, lsb;
++    unsigned char *p;
++
++    sha1_write(hd, NULL, 0); /* flush */;
++
++    t = hd->nblocks;
++    /* multiply by 64 to make a byte count */
++    lsb = t << 6;
++    msb = t >> 26;
++    /* add the count */
++    t = lsb;
++    if( (lsb += hd->count) < t )
++	msb++;
++    /* multiply by 8 to make a bit count */
++    t = lsb;
++    lsb <<= 3;
++    msb <<= 3;
++    msb |= t >> 29;
++
++    if( hd->count < 56 ) { /* enough room */
++	hd->buf[hd->count++] = 0x80; /* pad */
++	while( hd->count < 56 )
++	    hd->buf[hd->count++] = 0;  /* pad */
++    }
++    else { /* need one extra block */
++	hd->buf[hd->count++] = 0x80; /* pad character */
++	while( hd->count < 64 )
++	    hd->buf[hd->count++] = 0;
++	sha1_write(hd, NULL, 0);  /* flush */;
++	memset(hd->buf, 0, 56 ); /* fill next block with zeroes */
++    }
++    /* append the 64 bit count */
++    hd->buf[56] = msb >> 24;
++    hd->buf[57] = msb >> 16;
++    hd->buf[58] = msb >>  8;
++    hd->buf[59] = msb	   ;
++    hd->buf[60] = lsb >> 24;
++    hd->buf[61] = lsb >> 16;
++    hd->buf[62] = lsb >>  8;
++    hd->buf[63] = lsb	   ;
++    transform( hd, hd->buf );
++
++    p = hd->buf;
++#ifdef BIG_ENDIAN_HOST
++#define X(a) do { *(u32*)p = hd->h##a ; p += 4; } while(0)
++#else /* little endian */
++#define X(a) do { *p++ = hd->h##a >> 24; *p++ = hd->h##a >> 16;	 \
++		      *p++ = hd->h##a >> 8; *p++ = hd->h##a; } while(0)
++#endif
++    X(0);
++    X(1);
++    X(2);
++    X(3);
++    X(4);
++#undef X
++}
++
++
++void sha1sum(const unsigned char *buffer, size_t n, char sha1[20])
++{
++	SHA1_CONTEXT ctx;
++	int i;
++
++	sha1_init (&ctx);
++	sha1_write (&ctx, buffer, n);
++	sha1_final (&ctx);
++	
++	for(i=0; i<20; i++)
++		sha1[i]=ctx.buf[19-i];
++}
++
++#endif /* CONFIG_XENV_SUPPORT || CONFIG_TANGO2_XENV */
++
++/*
++Local Variables:
++compile-command: "cc -Wall -g -o sha1sum sha1sum.c"
++End:
++*/
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/sha1sum.h linuxmips-2.4.30/arch/mips/tango2/sha1sum.h
+--- linuxmips-2.4.30.ref/arch/mips/tango2/sha1sum.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/sha1sum.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,13 @@
++
++#ifndef __SHA1SUM_H__
++#define __SHA1SUM_H__
++
++/* sha1sum.h */
++
++#ifndef CONFIG_TANGO2_XENV
++typedef unsigned int size_t;
++#endif
++
++void sha1sum(const unsigned char *buffer, size_t n, char sha1[20]);
++
++#endif /* __SHA1SUM_H__ */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/tango2controllers.c linuxmips-2.4.30/arch/mips/tango2/tango2controllers.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/tango2controllers.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/tango2controllers.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,381 @@
++
++/*****************************************
++ Copyright Â© 2001-2003  
++ Sigma Designs, Inc. All Rights Reserved
++ Proprietary and Confidential
++ *****************************************/
++/**
++  @file  tango2controllers.c
++  @brief  
++
++  @author Emmanuel Michon
++  @date   2005-01-20
++*/
++
++#include "tango2controllers.h"
++
++#include <linux/config.h>
++#include <linux/init.h>
++#include <linux/interrupt.h>
++#include <linux/kernel.h>
++#include <linux/signal.h>
++
++#include <asm/irq_cpu.h>
++#include <asm/mipsregs.h>
++#include <asm/system.h>
++#include <asm/ptrace.h>
++
++#include <asm/tango2/tango2.h>
++#include <asm/tango2/rmdefs.h>
++
++static unsigned long tango2_irq_bases[3];
++
++#if (EM86XX_REVISION > 3)
++static unsigned long disabled_while_in_progress[6]={};
++#else
++static unsigned long disabled_while_in_progress[3]={};
++#endif
++
++static inline void tango2_irq_enable(unsigned int x) 
++{
++	irq_desc_t *desc = irq_desc + x;
++	int bit = x - IRQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLIRQ;
++	
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		bit -= 32;
++		index += 3;
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableset_hi,1<<bit);
++	} else {
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableset,1<<bit);
++	}
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]&=~(1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableset,1<<bit);
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]&=~(1<<bit);
++#endif
++}	
++
++static inline void tango2_fiq_enable(unsigned int x) 
++{
++	irq_desc_t *desc = irq_desc + x;
++	int bit = x - FIQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLFIQ;
++	
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		bit -= 32;
++		index += 3;
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableset_hi,1<<bit);
++	} else {
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableset,1<<bit);
++	}
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]&=~(1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableset,1<<bit);
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]&=~(1<<bit);
++#endif
++}	
++
++static inline void tango2_iiq_enable(unsigned int x) 
++{
++	irq_desc_t *desc = irq_desc + x;
++	int bit = x - IIQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLIIQ;
++	
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		bit -= 32;
++		index += 3;
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableset_hi,1<<bit);
++	} else {
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableset,1<<bit);
++	}
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]&=~(1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableset,1<<bit);
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]&=~(1<<bit);
++#endif
++}	
++
++static void tango2_irq_disable(unsigned int x)
++{
++	irq_desc_t *desc = irq_desc + x;
++	int bit = x - IRQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLIRQ;
++
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		bit -= 32;
++		index += 3;
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableclr_hi,1<<bit);
++	} else {
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableclr,1<<bit);
++	}
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]|=(1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_irq_enableclr,1<<bit);
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]|=(1<<bit);
++#endif
++}
++
++static void tango2_fiq_disable(unsigned int x)
++{
++	irq_desc_t *desc = irq_desc + x;
++	int bit = x - FIQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLFIQ;
++
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		bit -= 32;
++		index += 3;
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableclr_hi,1<<bit);
++	} else {
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableclr,1<<bit);
++	}
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]|=(1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_fiq_enableclr,1<<bit);
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]|=(1<<bit);
++#endif
++}
++
++static void tango2_iiq_disable(unsigned int x)
++{
++	irq_desc_t *desc = irq_desc + x;
++	int bit = x - IIQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLIIQ;
++
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		bit -= 32;
++		index += 3;
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableclr_hi,1<<bit);
++	} else {
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableclr,1<<bit);
++	}
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]|=(1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_iiq_enableclr,1<<bit);
++	if (desc->status&IRQ_INPROGRESS)
++		disabled_while_in_progress[index]|=(1<<bit);
++#endif
++}
++
++static unsigned int tango2_irq_startup(unsigned int x)
++{ 
++	int bit = x - IRQ_CONTROLLER_IRQ_BASE;
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat_hi,1<<(bit-32));
++	else 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#endif
++	tango2_irq_enable(x); 
++	return 0; 
++}
++
++#define	tango2_irq_shutdown tango2_irq_disable
++
++static unsigned int tango2_fiq_startup(unsigned int x)
++{ 
++	int bit = x - FIQ_CONTROLLER_IRQ_BASE;
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat_hi,1<<(bit-32));
++	else 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#endif
++	tango2_fiq_enable(x); 
++	return 0; 
++}
++
++#define	tango2_fiq_shutdown tango2_fiq_disable
++
++static unsigned int tango2_iiq_startup(unsigned int x)
++{ 
++	int bit = x - IIQ_CONTROLLER_IRQ_BASE;
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat_hi,1<<(bit-32));
++	else 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#endif
++	tango2_iiq_enable(x); 
++	return 0; 
++}
++
++#define	tango2_iiq_shutdown tango2_iiq_disable
++
++static void tango2_irq_ack(unsigned int x) 
++{
++	int bit = x - IRQ_CONTROLLER_IRQ_BASE;
++
++	// we are _not_ INPROGRESS
++	tango2_irq_disable(x);
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat_hi,1<<(bit-32));
++	else 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#endif
++}
++
++static void tango2_fiq_ack(unsigned int x) 
++{
++	int bit = x - FIQ_CONTROLLER_IRQ_BASE;
++
++	// we are _not_ INPROGRESS
++	tango2_fiq_disable(x);
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat_hi,1<<(bit-32));
++	else 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#endif
++}
++
++static void tango2_iiq_ack(unsigned int x) 
++{
++	int bit = x - IIQ_CONTROLLER_IRQ_BASE;
++
++	// we are _not_ INPROGRESS
++	tango2_iiq_disable(x);
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat_hi,1<<(bit-32));
++	else 
++		gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#else
++	gbus_write_uint32(pGBus,REG_BASE_cpu_block+CPU_edge_rawstat,1<<bit);
++#endif
++}
++
++/* Re-enabling interrupt in the irq_end operations */
++static void tango2_irq_end(unsigned int x) 
++{ 
++	int bit = x - IRQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLIRQ;
++
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		index += 3;
++		bit -= 32;
++	}
++#endif
++	if (!(disabled_while_in_progress[index]&(1<<bit)))
++		tango2_irq_enable(x);
++}
++
++/* Re-enabling interrupt in the fiq_end operations */
++static void tango2_fiq_end(unsigned int x) 
++{ 
++	int bit = x - FIQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLFIQ;
++
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		index += 3;
++		bit -= 32;
++	}
++#endif
++	if (!(disabled_while_in_progress[index]&(1<<bit)))
++		tango2_fiq_enable(x);
++}
++
++/* Re-enabling interrupt in the iiq_end operations */
++static void tango2_iiq_end(unsigned int x) 
++{ 
++	int bit = x - IIQ_CONTROLLER_IRQ_BASE;
++	int index = TANGO2_CTRLIIQ;
++
++#if (EM86XX_REVISION > 3)
++	if (bit >= 32) {
++		index += 3;
++		bit -= 32;
++	}
++#endif
++	if (!(disabled_while_in_progress[index]&(1<<bit)))
++		tango2_iiq_enable(x);
++}
++
++static hw_irq_controller tango2_irq_controller[3] = {
++	{	
++		"tango2_irq",
++		tango2_irq_startup,
++		tango2_irq_shutdown,
++		tango2_irq_enable,
++		tango2_irq_disable,
++		tango2_irq_ack,
++		tango2_irq_end,
++		NULL			/* no affinity stuff for UP */
++	},
++	{	
++		"tango2_fiq",
++		tango2_fiq_startup,
++		tango2_fiq_shutdown,
++		tango2_fiq_enable,
++		tango2_fiq_disable,
++		tango2_fiq_ack,
++		tango2_fiq_end,
++		NULL			/* no affinity stuff for UP */
++	},
++	{	
++		"tango2_iiq",
++		tango2_iiq_startup,
++		tango2_iiq_shutdown,
++		tango2_iiq_enable,
++		tango2_iiq_disable,
++		tango2_iiq_ack,
++		tango2_iiq_end,
++		NULL			/* no affinity stuff for UP */
++	},
++};
++
++void tango2_irq_init(int ctrlno,int irq_base)
++{
++	int x;
++
++#if (EM86XX_REVISION > 3)
++	/* SMP863xES4 or above has 64 interrupt sources */
++	for (x = irq_base; x < irq_base + 64; x++) {
++		irq_desc[x].status = IRQ_DISABLED;
++		irq_desc[x].action = NULL;
++		irq_desc[x].depth = 1;
++		irq_desc[x].handler = &tango2_irq_controller[ctrlno];
++	}
++#else
++	/* SMP8630ES1-3 has 32 interrupt sources */
++	for (x = irq_base; x < irq_base + 32; x++) {
++		irq_desc[x].status = IRQ_DISABLED;
++		irq_desc[x].action = NULL;
++		irq_desc[x].depth = 1;
++		irq_desc[x].handler = &tango2_irq_controller[ctrlno];
++	}
++#endif
++
++	tango2_irq_bases[ctrlno] = irq_base;
++}
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/tango2controllers.h linuxmips-2.4.30/arch/mips/tango2/tango2controllers.h
+--- linuxmips-2.4.30.ref/arch/mips/tango2/tango2controllers.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/tango2controllers.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,22 @@
++/*****************************************
++ Copyright © 2001-2003  
++ Sigma Designs, Inc. All Rights Reserved
++ Proprietary and Confidential
++ *****************************************/
++/**
++  @file   tango2controllers.h
++  @brief  
++
++  <long description>
++
++  @author Emmanuel Michon
++  @date   2004-06-03
++*/
++
++#ifndef __TANGO2CONTROLLERS_H__
++#define __TANGO2CONTROLLERS_H__
++
++void tango2_irq_init(int ctrlno,int irq_base);
++void ctrl_testcode(void);
++
++#endif // __TANGO2CONTROLLERS_H__
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/tango2IRQ.S linuxmips-2.4.30/arch/mips/tango2/tango2IRQ.S
+--- linuxmips-2.4.30.ref/arch/mips/tango2/tango2IRQ.S	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/tango2IRQ.S	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,64 @@
++// derived from hp-lj
++	
++#include <asm/asm.h>
++
++#include <asm/mipsregs.h>
++#include <asm/regdef.h>
++#include <asm/stackframe.h>
++
++#include <asm/tango2/tango2.h>
++
++	.text
++	.set    mips1
++	.set    reorder
++	.set    macro
++	.set    noat
++	.align	5
++
++# MIPS has 16 exception vectors numbered 0 to 15
++# vector number 0 is for interrupts and the others are for various exceptions
++# The following code is installed as the handler for exception 0
++# There are 8 possible interrupts that can cause this exception.
++# The cause register indicates which are pending
++# The status register indicates which are enabled
++# This code segment basically will decipher which interrup occurred (7 downto 0)
++# and pass an integer indicating which was the highest priority pending interrupt
++# to the do_IRQ routine.
++
++NESTED(tango2IRQ, PT_SIZE, sp)
++	SAVE_ALL
++	CLI				# Important: mark KERNEL mode !
++	/*
++	 * Get pending interrupts
++	 */
++
++	mfc0	t0,CP0_CAUSE		# get pending interrupts
++	mfc0	t1,CP0_STATUS		# get enabled interrupts
++	and	t0,t1			# isolate allowed ones
++	andi	t0,0xff00		# isolate pending bits
++	sll	t0,16			# shift the pending bits down
++	beqz	t0,3f			# no pending intrs, then spurious
++	nop				# delay slot
++
++	/*
++	 * Find irq with highest priority, defined as 7(high)..0(low)
++	 */
++
++	la	a0,7
++1:	bltz	t0,2f			# found pending irq
++	subu	a0,1
++	sll	t0,1
++	b	1b
++	nop				# delay slot
++
++
++call_do_IRQ:
++2:	move	a1,sp
++	jal	tango2_dispatch
++	nop				# delay slot
++	j       ret_from_irq
++	nop
++
++3:	j	spurious_interrupt
++END(tango2IRQ)
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/xenv.c linuxmips-2.4.30/arch/mips/tango2/xenv.c
+--- linuxmips-2.4.30.ref/arch/mips/tango2/xenv.c	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/xenv.c	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,246 @@
++/*****************************************
++ Copyright © 2004-2005
++ Sigma Designs, Inc. All Rights Reserved
++ Proprietary and Confidential
++ *****************************************/
++
++#ifdef __KERNEL__
++#include <linux/config.h>
++#include <linux/string.h>
++#else
++#include "zbootcfg.h"
++#include "uart.h"
++#include "util.h"
++#endif
++
++#if defined(CONFIG_XENV_SUPPORT) || defined(CONFIG_TANGO2_XENV)
++#include <asm/tango2/rmdefs.h>
++#include "xenv.h"
++
++// #include "xos.h"
++
++#define XENV_RDONLY
++
++#define xos_strcmp strcmp
++#define xos_strlen strlen
++#define xos_memcpy memcpy
++#define RMuint32_memcmp memcmp
++
++int xenv_isvalid(RMuint32 *base,RMuint32 size);
++void full_sha1(RMuint32 digest[5],const RMuint8 *src,RMuint32 size,RMuint32 fromISP);
++
++#if 0
++#define LOCALDBG ENABLE
++#else
++#define LOCALDBG DISABLE
++#endif
++
++/* xenv_lookup looks for a record
++ *  return -1 if not found
++ *  return -2 if parsing failed
++ *  return offset of record if found
++ */
++static int xenv_lookup(RMuint32 *base,RMuint32 size,RMascii *recordname)
++{
++	RMascii *p;
++	int i;
++	int env_size;
++	
++	env_size=xenv_isvalid(base,size);
++	
++	if (env_size<0) 
++		return -2;
++	
++	// RMDBGLOG((LOCALDBG, "[%s]\n",recordname));
++	
++	p=(RMascii *)base;
++	i=24; 			// jump over header
++	
++	while(i<env_size){
++		RMuint16 rec_size=((p[i]&0xf)<<8) + (((RMuint16)p[i+1])&0xff);
++
++		if (!xos_strcmp(recordname, p+i+2)) 
++			return i;
++		
++		i+=rec_size;
++	}
++	
++	return -1;
++}
++
++void xenv_format(RMuint32 *base)
++{
++	base[0]=24;
++	full_sha1(base+1,(const RMuint8 *)(base+6),24-24,0);
++
++	// RMDBGLOG((LOCALDBG, "%p done\n", base));
++}
++
++int xenv_isvalid(RMuint32 *base,RMuint32 size)
++{
++	RMuint32 env_size=base[0];
++	
++	if ((24<=env_size)&&(env_size<=size)) {
++		RMuint32 hash[5];
++		
++		full_sha1(hash,(const RMuint8 *)(base+6),env_size-24,0);
++		if (RMuint32_memcmp(base+1,hash,5)!=0) {
++			// RMDBGLOG((ENABLE,"corrupted\n"));
++			return -1;
++		}
++	}
++	else {
++		// RMDBGLOG((ENABLE,"runaway %d\n",env_size));
++		return -1;
++	}
++
++	return env_size;
++}
++
++RMstatus xenv_get(RMuint32 *base, RMuint32 size, RMascii *recordname, void *dst, RMuint32 *datasize)
++{
++	RMascii *p = (RMascii *)base;
++	RMuint32 data_len;
++	RMuint32 key_len;
++	RMuint32 env_size;
++	
++	int i;	
++	
++	env_size=base[0];
++	i = xenv_lookup(base, size, recordname);
++	if(i==-2) 
++		return RM_ERROR;
++	if(i==-1) 
++		return RM_NOT_FOUND;
++
++	// else we found the record
++	key_len=xos_strlen(recordname);
++	data_len=((p[i] & 0xf)<<8) + (((RMuint32)p[i+1])&0xff);
++	data_len-=2+key_len+1;
++	
++	if(data_len>*datasize) {
++		*datasize=data_len;
++
++		// RMDBGLOG((ENABLE,"cannot store result\n"));
++		return RM_INSUFFICIENT_SIZE;
++	}
++	
++	*datasize=data_len;
++	xos_memcpy(dst, p+i+2+key_len+1, data_len);
++
++	// RMDBGLOG((LOCALDBG, "found [%s], length %d\n",recordname,*datasize));
++
++	return RM_OK;
++}
++
++#ifndef XENV_RDONLY
++RMstatus xenv_set(RMuint32 *base, RMuint32 size, RMascii *recordname,void *src,RMuint8 attr,RMuint32 datasize)
++{
++	RMascii *p;
++	RMuint32 env_size;
++	RMuint32 rec_attr;
++	RMuint32 rec_size;
++	RMuint32 key_len;
++	int i;
++
++	// RMDBGLOG((LOCALDBG, "[%s], length %d\n", recordname,datasize));
++	
++	p=(RMascii *)base;
++	i = xenv_lookup(base, size, recordname);
++	if(i==-2) 
++		return RM_ERROR;
++	env_size=base[0];
++
++	if(i>=0) {
++		// RMDBGLOG((LOCALDBG, "deleting record\n"));
++		
++		rec_attr=p[i]>>4;
++		rec_size=((p[i]&0xf)<<8) + (((RMuint32)p[i+1])&0xff);
++			
++		if ((rec_attr==XENV_ATTR_RO)&&src) {
++			// RMDBGLOG((ENABLE,"wanna change ro record\n"));
++			return RM_INVALIDMODE;
++		}
++		
++		if (rec_attr==XENV_ATTR_OTP) {
++			// RMDBGLOG((ENABLE,"wanna change/clear otp record\n"));
++			return RM_INVALIDMODE;
++		}
++
++		// delete the record. Supposes memcpy is implemented increasing.
++		xos_memcpy(p+i, p+i+rec_size, env_size-(i+rec_size));
++		env_size-=rec_size;
++	}
++		
++	// add the record at the end if needed.
++	if(src) {
++		i=env_size;
++		key_len=xos_strlen(recordname);
++		rec_size=2+key_len+1+datasize;
++
++		if((i+rec_size)>=size)
++			return RM_INSUFFICIENT_SIZE;
++		
++		p[i]=((attr&0xf)<<4) | ((rec_size>>8)&0xf);
++		p[i+1]=rec_size&0xff;
++		
++		xos_memcpy(p+i+2, recordname, key_len+1);
++		xos_memcpy(p+i+2+key_len+1, src, datasize);
++		
++		env_size+=rec_size;
++	}
++	
++	base[0]=env_size;
++	full_sha1(base+1,(const RMuint8 *)(base+6),env_size-24,0);
++
++	return RM_OK;
++}
++#endif /* !XENV_RDONLY */
++
++#ifdef _DEBUG
++void xenv_dump(RMuint32 *base,RMuint32 size)
++{
++	RMascii *p;
++	int i;
++	int env_size;
++	RMuint32 records=0;
++
++#if 0
++	return;
++#endif
++	
++	env_size=xenv_isvalid(base,size);
++	
++	if (env_size<0) 
++		return;
++	
++	// RMDBGLOG((ENABLE,"@%p\n",base));
++	
++	p=(RMascii *)base;
++	i=24; 			// jump over header
++	
++	while(i<env_size){
++		RMuint8 rec_attr;
++		RMuint16 rec_size;
++		RMascii *recordname;
++		RMuint32 key_len;
++		RMascii *x;
++		
++		rec_attr=p[i]>>4;
++		rec_size=((p[i]&0xf)<<8) + (((RMuint16)p[i+1])&0xff);
++		recordname=p+i+2;
++		key_len=xos_strlen(recordname);
++		
++		// RMDBGLOG((ENABLE,"(0x%02x) [%s] =",rec_attr,recordname));
++		for (x=recordname+key_len+1;x<recordname+rec_size-2;x++) RMDBGPRINT((ENABLE," %02x",*x));
++		RMDBGPRINT((ENABLE," .\n"));
++		
++		records++;
++		i+=rec_size;
++	}
++	
++	// RMDBGLOG((ENABLE,"%d records, %d bytes\n\n",records,env_size));
++}
++#endif
++#endif /* CONFIG_XENV_SUPPORT || CONFIG_TANGO2_XENV */
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/xenv.h linuxmips-2.4.30/arch/mips/tango2/xenv.h
+--- linuxmips-2.4.30.ref/arch/mips/tango2/xenv.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/xenv.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,159 @@
++/*****************************************
++ Copyright © 2004-2005
++ Sigma Designs, Inc. All Rights Reserved
++ Proprietary and Confidential
++ *****************************************/
++/**
++  @file   xenv.h
++  @brief  
++
++  The prototypes below act on a clear area respecting the xenv format.
++
++  (De)ciphering the area, as well as committing the changes (writing the
++  area to flash) are trivial add-ons on top of this API.
++
++  The underlying implementation is not optimized for speed 
++  (read and write in O(nrecords)). There is no fragmentation (data completely
++  rearranged at each write).
++
++  It is not advised to repeatedly act on flash stored data, for
++  the device does not support unlimited read/write operations (refer to spec)
++
++  Power loss when committing the changes cause loss of the stored data.
++  This can be avoided by storing the same data twice to two different sectors.
++
++  --------------------------------------------------------------------------
++  Specification of a secure storage on serial flash of reboot-persistent data (xenv format)
++
++  We describe a way to concatenate (at most 4KByte area (12bits limit)) variable length
++  records identified by a string, the `key' (working much like Windows registry)
++
++  Page, seen as a byte array, is 
++  
++  0          4                   24                                          env_size        4KB
++  | env_size | SHA-1 of following | xenv_record0 | xenv_record1 | .. | xenv_recordn | xx xx .. |
++
++  The SHA-1 extent is env_size-24.
++
++  Description of a xenv_record (bytes):
++
++  |4bits   12bits (2bytes)   | variable, NULL terminated | variable         |
++  attr     total record size   record name (string)        record value
++
++  attr = 
++   XENV_ATTR_RW 
++   XENV_ATTR_RO can be written once only but can be deleted	
++   XENV_ATTR_OTP this record can be written once only and cannot be deleted
++  --------------------------------------------------------------------------
++
++  @author Emmanuel Michon
++  @date   2005-05-17
++*/
++
++#ifndef __XENV_H__
++#define __XENV_H__
++
++#ifdef __KERNEL__
++#include <linux/config.h>
++#else
++typedef unsigned int RMuint32;
++typedef unsigned short RMuint16;
++typedef unsigned char RMuint8;
++typedef char RMascii;
++typedef int RMstatus;
++#endif
++
++#if defined(CONFIG_XENV_SUPPORT) || defined(CONFIG_TANGO2_XENV)
++#define RM_OK 6
++#define RM_ERROR 1
++#define RM_NOT_FOUND 2
++#define RM_INSUFFICIENT_SIZE 3
++#define RM_INVALIDMODE 4
++
++#define MAX_XENV_SIZE   16384
++#endif 
++
++/**
++   Initial xenv formatting to `empty'
++
++   Passing the size is not necessary, however, minimum 24bytes must be accessible starting at base.
++
++   @param base  
++*/
++void xenv_format(RMuint32 *base);
++
++/// 
++/**
++   Check for compliance with xenv format
++
++   May be corrupted by: 
++   - forgot to format
++   - power loss during sflash write
++   - intrusion
++
++   @param base  
++   @param size  
++   @return -ReturnValue-: env_size>=0 if valid, -1 if not.
++*/
++int xenv_isvalid(RMuint32 *base,RMuint32 size);
++
++/**
++   Look for `recordname' in the clear area pointed to by base,size
++   
++   Returns 
++   RM_NOT_FOUND if the record is absent
++   RM_INSUFFICIENT_SIZE if provided *datasize cannot hold result, *datasize is updated with how much you need
++   RM_ERROR if clear area is not compliant with xenv format (data uninitialized or corrupted).
++
++   Example
++   {
++     RMuint32 data[5];
++     
++     xenv_get(cleararea,PAGE_SIZE,"myhash",data);
++   }
++
++   @param base  
++   @param size  
++   @param recordname    
++   @param dst   
++   @param datasize: will be updated to actual size 
++   @return -ReturnValue-
++*/
++RMstatus xenv_get(RMuint32 *base, RMuint32 size, RMascii *recordname, void *dst, RMuint32 *datasize);
++
++/**
++   Sets `recordname' in the clear area pointed to by base,size
++   The area is rearranged to take the change into account (no fragmentation)
++   
++   The empty string is a valid key. 
++   Storage of zero-length records is ok.
++   Updating a record with a smaller or larger size is ok.
++   
++   Special: passing a NULL src means: delete the existing record. In this case, datasize is ignored.
++   
++   A record of attr XENV_ATTR_RW can be updated to a different attr. Others are immutable.
++   
++   It is advised to call the `commit' (write sector to flash) function if this
++   call is successful.
++
++   Returns 
++   RM_INVALIDMODE if setting an existing XENV_ATTR_RO/_OTP for the second time, 
++                  or deleting a XENV_ATTR_OTP record
++   RM_INSUFFICIENT_SIZE if room is exhausted
++   RM_ERROR if clear area is not compliant with xenv format (data uninitialized or corrupted).
++
++   @param base  
++   @param size  
++   @param recordname    
++   @param src
++   @param attr  
++   @param datasize
++   @return -ReturnValue-
++*/
++RMstatus xenv_set(RMuint32 *base, RMuint32 size, RMascii *recordname,void *src,RMuint8 attr,RMuint32 datasize);
++
++#ifdef _DEBUG
++void xenv_dump(RMuint32 *base,RMuint32 size);
++#endif
++
++#endif // __XENV_H__
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/arch/mips/tango2/xenvkeys.h linuxmips-2.4.30/arch/mips/tango2/xenvkeys.h
+--- linuxmips-2.4.30.ref/arch/mips/tango2/xenvkeys.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/arch/mips/tango2/xenvkeys.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,119 @@
++
++/* 
++ * The keys defined in XENV, more can be added.
++ */
++
++#ifndef __XENV_KEYS_H__
++#define __XENV_KEYS_H__
++
++#define XENV_KEY_BOARD_ID           "a.board_id"
++#define XENV_KEY_CHIP_REV           "a.chip_rev"
++
++#define XENV_KEY_PREMUX             "a.premux"
++#define XENV_KEY_AVCLK_MUX          "a.avclk_mux"
++#define XENV_KEY_HOSTCLK_MUX        "a.hostclk_mux"
++#define XENV_KEY_IRQ_RISE_EDGE_LO   "a.irq_rise_edge_lo"
++#define XENV_KEY_IRQ_FALL_EDGE_LO   "a.irq_fall_edge_lo"
++#define XENV_KEY_GPIO_IRQ_MAP       "a.gpio_irq_map"
++
++#define XENV_KEY_DEF_BAUDRATE       "a.baudrate"
++#define XENV_KEY_CONSOLE_UART_PORT  "a.uart_console_port"
++#define XENV_KEY_UART_USED_PORTS    "a.uart_used_ports"
++
++#define XENV_KEY_PB_CS_CONFIG       "a.pb_cs_config"
++#define XENV_KEY_DEF_TIMING         "a.pb_def_timing"
++#define XENV_KEY_PB_TIMING0         "a.pb_timing0"
++#define XENV_KEY_PB_USE_TIMING0     "a.pb_use_timing0"
++#define XENV_KEY_PB_TIMING1         "a.pb_timing1"
++#define XENV_KEY_PB_USE_TIMING1     "a.pb_use_timing1"
++#define XENV_KEY_PB_TIMING2         "a.pb_timing2"
++#define XENV_KEY_PB_USE_TIMING2     "a.pb_use_timing2"
++#define XENV_KEY_PB_TIMING3         "a.pb_timing3"
++#define XENV_KEY_PB_USE_TIMING3     "a.pb_use_timing3"
++#define XENV_KEY_PB_TIMING4         "a.pb_timing4"
++#define XENV_KEY_PB_USE_TIMING4     "a.pb_use_timing4"
++#define XENV_KEY_PB_TIMING5         "a.pb_timing5"
++#define XENV_KEY_PB_USE_TIMING5     "a.pb_use_timing5"
++
++#if (EM86XX_REVISION > 3)
++#define XENV_KEY_IRQ_RISE_EDGE_HI   "a.irq_rise_edge_hi"
++#define XENV_KEY_IRQ_FALL_EDGE_HI   "a.irq_fall_edge_hi"
++#endif
++
++#define XENV_KEY_ENABLED_DEVICES    "a.enable_devices"
++
++#define XENV_KEY_ETH_MAC            "a.eth_mac"
++
++#define XENV_KEY_SCARD_OFF          "a.scard_off_pin"
++#define XENV_KEY_SCARD_5V           "a.scard_5v_pin"
++#define XENV_KEY_SCARD_CMD          "a.scard_cmd_pin"
++
++#define XENV_KEY_ISAIDE_IRQ_ROUTE   "a.isaide_irq_route"
++#define XENV_KEY_ISAIDE_TIMING_SLOT "a.isaide_timing_slot"
++
++#define XENV_KEY_GPIO_DIR           "a.gpio_dir"
++#define XENV_KEY_GPIO_DATA          "a.gpio_data"
++
++#define XENV_KEY_LINUX_CMD          "a.linux_cmd"
++
++#define XENV_KEY_Z_BOOT_DEF         "z.default_boot"
++
++#define XENV_KEY_Z_PROD_TEST        "z.dt"
++#define XENV_KEY_Z_PROD_LOOPS       "z.prod_loops"
++#define XENV_KEY_Z_PROD_FTEST       "z.prod_ftest"
++#define XENV_KEY_Z_PROD_FSTART      "z.prod_fstart"
++#define XENV_KEY_Z_PROD_FEND        "z.prod_fend"
++#define XENV_KEY_Z_PROD_FSTEP       "z.prod_fstep"
++#define XENV_KEY_Z_PROD_RWIN        "z.prod_rwindow"
++#define XENV_KEY_Z_PROD_WWIN        "z.prod_wwindow"
++#define XENV_KEY_Z_PROD_CL          "z.prod_cl"
++#define XENV_KEY_Z_PROD_NBLOCKS     "z.prod_nblocks"
++
++#define XENV_KEY_YAMON_ENV          "y.env"
++#define XENV_KEY_YAMON_IPADDR       "y.ipaddr"
++#define XENV_KEY_YAMON_SUBNET       "y.subnetmask"
++#define XENV_KEY_YAMON_GATEWAY      "y.gateway"
++#define XENV_KEY_YAMON_START        "y.start"
++#define XENV_KEY_YAMON_STARTDELAY   "y.startdelay"
++
++#define XENV_KEYS_PCI_IRQ_ROUTE     "a.pcidev%d_irq_route"
++#define XENV_KEYS_CD_FREQUENCY      "a.cd%d_freq"
++#define XENV_KEYS_CD_DIV            "a.cd%d_div"
++#define XENV_KEYS_UART_GPIO_MODE    "a.uart%d_gpio_mode"
++#define XENV_KEYS_UART_GPIO_DIR     "a.uart%d_gpio_dir"
++#define XENV_KEYS_UART_GPIO_DATA    "a.uart%d_gpio_data"
++#define XENV_KEYS_UART_BAUDRATE     "a.uart%d_baudrate"
++#define XENV_KEYS_GPIO_PULSE        "a.gpio%d_pulse"
++
++#define XENV_KEYS_Z_BOOT_LOCATION   "z.boot%d"
++
++#define XENV_KEYS_CS_SIZE           "l.cs%d_size"
++#define XENV_KEYS_CS_PARTS          "l.cs%d_parts"
++
++#define XENV_KEYS_CS_PART_SIZE      "l.cs%d_part%d_size"
++#define XENV_KEYS_CS_PART_OFFSET    "l.cs%d_part%d_offset" 
++
++#ifndef CONFIG_SIGBLOCK_SUPPORT
++#define ISAIDE_SHIFT		0
++#define BMIDE_SHIFT		1
++#define PCIHOST_SHIFT		2
++#define ETHERNET_SHIFT		3
++#define IR_SHIFT		4
++#define FIP_SHIFT		5	
++#define I2CM_SHIFT		6
++#define I2CS_SHIFT		7
++#define SDIO_SHIFT		8
++#define USB_SHIFT		9
++#define PCI1_SHIFT		10
++#define PCI2_SHIFT		11
++#define PCI3_SHIFT		12
++#define PCI4_SHIFT		13
++#define PCI5_SHIFT		14
++#define PCI6_SHIFT		15
++#define SATA_SHIFT		16
++#define SCARD_SHIFT		17
++#define GNET_SHIFT		18
++#endif
++
++#endif
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/asm.h linuxmips-2.4.30/include/asm-mips/asm.h
+--- linuxmips-2.4.30.ref/include/asm-mips/asm.h	2003-12-29 21:48:31.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/asm.h	2007-06-20 14:01:27.000000000 -0700
+@@ -107,6 +107,15 @@
+ /*
+  * Print formatted string
+  */
++#ifdef CONFIG_TANGO2
++#define PRINT(string)                                   \
++		.set	push;				\
++		.set	reorder;                        \
++		PTR_LA	a0,8f;                          \
++		jal	the_REAL_printk;                         \
++		.set	pop;				\
++		TEXT(string)
++#else /* !CONFIG_TANGO2 */
+ #define PRINT(string)                                   \
+ 		.set	push;				\
+ 		.set	reorder;                        \
+@@ -114,6 +123,7 @@
+ 		jal	printk;                         \
+ 		.set	pop;				\
+ 		TEXT(string)
++#endif /* CONFIG_TANGO2 */
+ 
+ #define	TEXT(msg)                                       \
+ 		.pushsection .data;			\
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/bootinfo.h linuxmips-2.4.30/include/asm-mips/bootinfo.h
+--- linuxmips-2.4.30.ref/include/asm-mips/bootinfo.h	2005-01-30 00:01:28.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/bootinfo.h	2007-06-20 14:01:27.000000000 -0700
+@@ -37,6 +37,7 @@
+ #define MACH_GROUP_HP_LJ       20 /* Hewlett Packard LaserJet               */
+ #define MACH_GROUP_LASAT       21
+ #define MACH_GROUP_TITAN       22 /* PMC-Sierra Titan 			    */
++#define MACH_GROUP_SIGMADESIGNS      23 /* For SigmaDesigns Tango2 board                 */
+ 
+ /*
+  * Valid machtype values for group unknown (low order halfword of mips_machtype)
+@@ -201,6 +202,11 @@
+  */
+ #define	MACH_TITAN_YOSEMITE	1 	/* PMC-Sierra Yosemite */
+ 
++/*
++ * Valid machtype for group SigmaDesigns
++ */
++#define	MACH_TANGO2		0 	/* Tango2 */
++
+ #define CL_SIZE			(256)
+ 
+ const char *get_system_type(void);
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/cache.h linuxmips-2.4.30/include/asm-mips/cache.h
+--- linuxmips-2.4.30.ref/include/asm-mips/cache.h	2003-04-06 17:17:06.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/cache.h	2007-06-20 14:01:27.000000000 -0700
+@@ -12,7 +12,7 @@
+ #include <linux/config.h>
+ 
+ #if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_R6000) || \
+-    defined(CONFIG_CPU_TX39XX)
++    defined(CONFIG_CPU_TX39XX) || defined(CONFIG_TANGO2)
+ #define L1_CACHE_BYTES		16
+ #else
+ #define L1_CACHE_BYTES 		32	/* A guess */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/cpu.h linuxmips-2.4.30/include/asm-mips/cpu.h
+--- linuxmips-2.4.30.ref/include/asm-mips/cpu.h	2004-07-07 11:19:37.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/cpu.h	2007-06-20 14:01:27.000000000 -0700
+@@ -66,6 +66,9 @@
+ #define PRID_IMP_4KEC		0x8400
+ #define PRID_IMP_4KSC		0x8600
+ #define PRID_IMP_25KF		0x8800
++#ifdef CONFIG_TANGO2
++#define PRID_IMP_SIGMADESIGNS   0x9000
++#endif
+ #define PRID_IMP_24K		0x9300
+ 
+ #define PRID_IMP_UNKNOWN	0xff00
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/delay.h linuxmips-2.4.30/include/asm-mips/delay.h
+--- linuxmips-2.4.30.ref/include/asm-mips/delay.h	2004-10-07 19:42:48.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/delay.h	2007-06-20 14:01:27.000000000 -0700
+@@ -75,7 +75,12 @@
+ #define __udelay_val loops_per_jiffy
+ #endif
+ 
++#ifdef CONFIG_TANGO2
++void tango2_udelay(unsigned usec);
++#define udelay(usecs) tango2_udelay(usecs)
++#else
+ #define udelay(usecs) __udelay((usecs),__udelay_val)
++#endif
+ #define ndelay(nsecs) __ndelay((nsecs),__udelay_val)
+ 
+ #endif /* _ASM_DELAY_H */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/dma.h linuxmips-2.4.30/include/asm-mips/dma.h
+--- linuxmips-2.4.30.ref/include/asm-mips/dma.h	2003-08-13 10:19:28.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/dma.h	2007-06-20 14:01:27.000000000 -0700
+@@ -87,6 +87,8 @@
+ /* Horrible hack to have a correct DMA window on IP22 */
+ #include <asm/sgi/mc.h>
+ #define MAX_DMA_ADDRESS		(PAGE_OFFSET + SGIMC_SEG0_BADDR + 0x01000000)
++#elif defined(CONFIG_TANGO2)
++#define MAX_DMA_ADDRESS		(PAGE_OFFSET + 0x20000000)
+ #else
+ #define MAX_DMA_ADDRESS		(PAGE_OFFSET + 0x01000000)
+ #endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/io.h linuxmips-2.4.30/include/asm-mips/io.h
+--- linuxmips-2.4.30.ref/include/asm-mips/io.h	2003-02-25 14:03:12.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/io.h	2007-06-20 14:01:27.000000000 -0700
+@@ -126,13 +126,13 @@
+ #define __raw_readw(addr)	(*(volatile unsigned short *)(addr))
+ #define __raw_readl(addr)	(*(volatile unsigned int *)(addr))
+ 
+-#define writeb(b,addr) ((*(volatile unsigned char *)(addr)) = (b))
+-#define writew(b,addr) ((*(volatile unsigned short *)(addr)) = (__ioswab16(b)))
+-#define writel(b,addr) ((*(volatile unsigned int *)(addr)) = (__ioswab32(b)))
+-
+-#define __raw_writeb(b,addr)	((*(volatile unsigned char *)(addr)) = (b))
+-#define __raw_writew(w,addr)	((*(volatile unsigned short *)(addr)) = (w))
+-#define __raw_writel(l,addr)	((*(volatile unsigned int *)(addr)) = (l))
++#define writeb(b,addr) do { ((*(volatile unsigned char *)(addr)) = (b));__sync(); } while(0)
++#define writew(b,addr) do { ((*(volatile unsigned short *)(addr)) = (__ioswab16(b)));__sync(); } while(0)
++#define writel(b,addr) do { ((*(volatile unsigned int *)(addr)) = (__ioswab32(b)));__sync(); } while(0)
++
++#define __raw_writeb(b,addr)	do { ((*(volatile unsigned char *)(addr)) = (b));__sync(); } while(0)
++#define __raw_writew(w,addr)	do { ((*(volatile unsigned short *)(addr)) = (w));__sync(); } while(0)
++#define __raw_writel(l,addr)	do { ((*(volatile unsigned int *)(addr)) = (l));__sync(); } while(0)
+ 
+ /*
+  * TODO: Should use variants that don't do prefetching.
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/irq.h linuxmips-2.4.30/include/asm-mips/irq.h
+--- linuxmips-2.4.30.ref/include/asm-mips/irq.h	2003-04-16 05:59:34.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/irq.h	2007-06-20 14:01:27.000000000 -0700
+@@ -14,7 +14,17 @@
+ #include <linux/config.h>
+ #include <linux/linkage.h>
+ 
++#ifndef CONFIG_TANGO2
+ #define NR_IRQS 128		/* Largest number of ints of all machines.  */
++#elif defined(CONFIG_QUICKTURN)
++#define NR_IRQS 128		/* Largest number of ints of all machines.  */
++#elif defined(CONFIG_TANGO2_SMP863X) && (EM86XX_REVISION < 4)
++#define NR_IRQS 128		/* Largest number of ints of all machines.  */
++#elif defined(CONFIG_TANGO2_SMP863X) && (EM86XX_REVISION > 3)
++#define NR_IRQS 256		/* Largest number of ints of all machines.  */
++#else
++#error "Unsupported Tango2 chip."
++#endif
+ 
+ #ifdef CONFIG_I8259
+ static inline int irq_cannonicalize(int irq)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/mipsregs.h linuxmips-2.4.30/include/asm-mips/mipsregs.h
+--- linuxmips-2.4.30.ref/include/asm-mips/mipsregs.h	2005-02-06 13:24:22.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/mipsregs.h	2007-06-20 14:01:27.000000000 -0700
+@@ -752,6 +752,9 @@
+ #define write_c0_cause(val)	__write_32bit_c0_register($13, 0, val)
+ 
+ #define read_c0_prid()		__read_32bit_c0_register($15, 0)
++#ifdef CONFIG_TANGO2
++#define read_c0_ebase()		__read_32bit_c0_register($15, 1)
++#endif /* CONFIG_TANGO2 */
+ 
+ #define read_c0_config()	__read_32bit_c0_register($16, 0)
+ #define read_c0_config1()	__read_32bit_c0_register($16, 1)
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/page.h linuxmips-2.4.30/include/asm-mips/page.h
+--- linuxmips-2.4.30.ref/include/asm-mips/page.h	2003-12-11 12:47:12.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/page.h	2007-06-20 14:01:27.000000000 -0700
+@@ -36,6 +36,7 @@
+ 
+ #define BUG()								\
+ do {									\
++	printk("BUG on %s (%s:%d)\n", __FUNCTION__, __FILE__, __LINE__);\
+ 	__asm__ __volatile__("break %0" : : "i" (BRK_BUG));		\
+ } while (0)
+ 
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/param.h linuxmips-2.4.30/include/asm-mips/param.h
+--- linuxmips-2.4.30.ref/include/asm-mips/param.h	2004-10-07 19:42:48.000000000 -0700
++++ linuxmips-2.4.30/include/asm-mips/param.h	2007-06-20 14:01:27.000000000 -0700
+@@ -37,12 +37,17 @@
+ 
+ #else /* Not a DECstation  */
+ 
++#if defined(CONFIG_TANGO2) && !defined(CONFIG_TANGO2_USE_CPU_CLOCK) && defined(CONFIG_TANGO2_HZ_VALUE)
++#  define HZ CONFIG_TANGO2_HZ_VALUE
++#  define hz_to_std(a) (a)
++#else
+ /* This is the internal value of HZ, that is the rate at which the jiffies
+    counter is increasing.  This value is independent from the external value
+    and can be changed in order to suit the hardware and application
+    requirements.  */
+ #  define HZ 100
+ #  define hz_to_std(a) (a)
++#endif
+ 
+ #endif /* Not a DECstation  */
+ 
+@@ -68,7 +73,11 @@
+ #define MAXHOSTNAMELEN	64	/* max length of hostname */
+ 
+ #ifdef __KERNEL__
++#if defined(CONFIG_TANGO2) && !defined(CONFIG_TANGO2_USE_CPU_CLOCK) && defined(CONFIG_TANGO2_HZ_VALUE)
++# define CLOCKS_PER_SEC	HZ	/* frequency at which times() counts */
++#else
+ # define CLOCKS_PER_SEC	100	/* frequency at which times() counts */
+ #endif
++#endif
+ 
+ #endif /* _ASM_PARAM_H */
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/tango2/hardware.h linuxmips-2.4.30/include/asm-mips/tango2/hardware.h
+--- linuxmips-2.4.30.ref/include/asm-mips/tango2/hardware.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/tango2/hardware.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,92 @@
++#ifndef __HARDWARE_H
++#define __HARDWARE_H
++
++#include <linux/version.h>
++#include <asm/tango2/emhwlib_registers_tango2.h>
++
++// UART0
++#define CPU_uart0_gpio_dir	    (CPU_UART0_base + CPU_UART_GPIODIR)
++#define CPU_uart0_gpio_data	    (CPU_UART0_base + CPU_UART_GPIODATA)
++#define CPU_uart0_gpio_mode	    (CPU_UART0_base + CPU_UART_GPIOMODE)
++
++// UART0
++#define CPU_uart1_gpio_dir	    (CPU_UART1_base + CPU_UART_GPIODIR)
++#define CPU_uart1_gpio_data	    (CPU_UART1_base + CPU_UART_GPIODATA)
++#define CPU_uart1_gpio_mode	    (CPU_UART1_base + CPU_UART_GPIOMODE)
++
++#define MIPS_CPU_IRQ_BASE 0
++
++#ifdef CONFIG_QUICKTURN
++#define IRQ_CONTROLLER_IRQ_BASE 8
++#define FIQ_CONTROLLER_IRQ_BASE 40
++#define IIQ_CONTROLLER_IRQ_BASE 72 // bit31 of iiq is linux irq 103
++#elif defined(CONFIG_TANGO2_SMP863X) && (EM86XX_REVISION < 4)
++#define IRQ_CONTROLLER_IRQ_BASE 8
++#define FIQ_CONTROLLER_IRQ_BASE 40
++#define IIQ_CONTROLLER_IRQ_BASE 72 // bit31 of iiq is linux irq 103
++#elif defined(CONFIG_TANGO2_SMP863X) && (EM86XX_REVISION > 3)
++#define IRQ_CONTROLLER_IRQ_BASE 8
++#define FIQ_CONTROLLER_IRQ_BASE 72
++#define IIQ_CONTROLLER_IRQ_BASE 136 // bit31 of iiq is linux irq 199
++#else
++#error "Unsupported Tango2 chip."
++#endif
++
++#define IRQ_SOFTINT                     (IRQ_CONTROLLER_IRQ_BASE+0)   // gnet compatibility
++// IDE interrupts
++#define IRQ_IDECTRL_IDEDMA	(LOG2_CPU_DMAIDE_INT + IRQ_CONTROLLER_IRQ_BASE)
++#define IRQ_IDECTRL_IDE		(LOG2_CPU_IDE_INT + IRQ_CONTROLLER_IRQ_BASE)
++
++// MBUS interface
++#define MIF_add_offset		    0x0
++#define MIF_cnt_offset              (MIF_W0_CNT - MIF_W0_ADD) //0x04
++#define MIF_add2_skip_offset        (MIF_W0_SKIP - MIF_W0_ADD) //0x08
++#define MIF_cmd_offset              (MIF_W0_CMD - MIF_W0_ADD) //0x0c
++
++// GPIO
++#define GPIO_DIR_INPUT(gpio)        ((1 << (16 + (gpio))))
++#define GPIO_DIR_OUTPUT(gpio)       ((1 << (16 + (gpio))) | (1 << (gpio)))
++#define GPIO_DATA_SET(gpio)         ((1 << (16 + (gpio))) | (1 << (gpio)))
++#define GPIO_DATA_CLEAR(gpio)       ((1 << (16 + (gpio))))
++
++// UART GPIO
++#define UART_GPIO_DIR_INPUT(gpio)        ((1 << (8 + (gpio))))
++#define UART_GPIO_DIR_OUTPUT(gpio)       ((1 << (8 + (gpio))) | (1 << (gpio)))
++#define UART_GPIO_DATA_SET(gpio)         ((1 << (8 + (gpio))) | (1 << (gpio)))
++#define UART_GPIO_DATA_CLEAR(gpio)       ((1 << (8 + (gpio))))
++
++/* PCI Memories */
++#define MEMORY_BASE_PCI_CONFIG      0x50000000UL  /* PCI configuration */
++#define MEMORY_BASE_PCI_IO          0x58000000UL  /* PCI I/O space */
++#define MEMORY_BASE_PCI_MEMORY      0x60000000UL  /* PCI Memory Base */
++
++#define PCIBIOS_MIN_MEM_EM86XX  (MEMORY_BASE_PCI_MEMORY + 0x10000000UL)   /* base
++address of EM86xx PCI slave */
++
++// Peripheral bus Registers
++#define HOST_pb0_base               0x0000
++#define HOST_pb_base_cs(n)          (HOST_pb0_base + (0x0200 * (n)))
++
++#define PB_timing_slot(n)	    (PB_timing0 + (0x04 * (n)))
++
++#if !defined(CONFIG_TANGO2_SIG_BLOCK) && !defined(CONFIG_TANGO2_XENV)
++#define PB_CS0	0	/* ISA IDE -- in general */
++#define PB_CS1	1
++#define PB_CS2	2	/* Parallel flash -- in general */
++#define PB_CS3	3
++#endif /* !CONFIG_TANGO2_SIG_BLOCK && !CONFIG_TANGO2_XENV */
++
++// Bus Master IDE
++#define REG_BASE_host_interface_BMIDE         (REG_BASE_host_interface + IDECTRL_pri_cmdblock)
++
++#if defined(CONFIG_TANGO2_SIG_BLOCK) || defined(CONFIG_TANGO2_XENV)
++#define REG_BASE_host_interface_ISAIDE(x)  (REG_BASE_host_interface + HOST_pb_base_cs(x))
++#else
++#define IRQ_IDE         (LOG2_CPU_PCI_INTD + IRQ_CONTROLLER_IRQ_BASE)
++#define IRQ_PCI         (LOG2_CPU_PCI_INTB + IRQ_CONTROLLER_IRQ_BASE)
++#define PB_TIMINGSLOT_IDE    PB_CS0
++#define REG_BASE_host_interface_ISAIDE  (REG_BASE_host_interface + HOST_pb_base_cs(PB_CS0))
++#endif /* CONFIG_TANGO2_SIG_BLOCK || CONFIG_TANGO2_XENV */
++
++#endif //__HARDWARE_H
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/tango2/memcfg.h linuxmips-2.4.30/include/asm-mips/tango2/memcfg.h
+--- linuxmips-2.4.30.ref/include/asm-mips/tango2/memcfg.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/tango2/memcfg.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,37 @@
++
++/* For more memcfg operations */
++
++#ifndef _MEMCFG_H_
++#define _MEMCFG_H_
++
++#include <linux/config.h>
++#include <asm/tango2/tango2.h>
++#include <asm/tango2/rmem86xxid.h>
++#include <asm/tango2/emhwlib_lram.h>
++#include <asm/tango2/emhwlib_dram.h>
++
++static inline int is_valid_memcfg(memcfg_t *memcfg_ptr)
++{
++	unsigned int sum, i, *ptr;
++
++	if ((memcfg_ptr->signature) != MEMCFG_SIGNATURE)
++		return(0);
++	for (sum = i = 0, ptr = (unsigned int *)memcfg_ptr;
++		i < (sizeof(memcfg_t) / sizeof(unsigned int)); i++, ptr++)
++		sum += (*ptr);
++	return((sum == 0) ? 1 : 0);
++}
++
++static inline void gen_memcfg_checksum(memcfg_t *memcfg_ptr)
++{
++	unsigned int sum, i, *ptr;
++
++	memcfg_ptr->checksum = 0;
++	for (sum = i = 0, ptr = (unsigned int *)memcfg_ptr;
++		i < (sizeof(memcfg_t) / sizeof(unsigned int)); i++, ptr++)
++		sum += (*ptr);
++	memcfg_ptr->checksum = ~sum + 1;
++}
++
++#endif /* _MEMCFG_H_ */
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/tango2/rmdefs.h linuxmips-2.4.30/include/asm-mips/tango2/rmdefs.h
+--- linuxmips-2.4.30.ref/include/asm-mips/tango2/rmdefs.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/tango2/rmdefs.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,32 @@
++
++#ifndef __RMDEFS_H__
++#define __RMDEFS_H__
++
++#ifndef __ASSEMBLY__
++
++#ifndef __RMBTYPES_H__
++typedef unsigned long RMuint32;
++typedef unsigned short RMuint16;
++typedef unsigned char RMuint8;
++typedef char RMascii;
++struct gbus;
++#ifndef pGBus
++#define pGBus ((struct gbus *)1)
++#endif
++
++RMuint32 gbus_read_uint32(struct gbus *pgbus, RMuint32 byte_address);
++RMuint16 gbus_read_uint16(struct gbus *pgbus, RMuint32 byte_address);
++RMuint8 gbus_read_uint8(struct gbus *pgbus, RMuint32 byte_address);
++void gbus_write_uint32(struct gbus *pgbus, RMuint32 byte_address, RMuint32 data);
++void gbus_write_uint16(struct gbus *pgbus, RMuint32 byte_address, RMuint16 data);
++void gbus_write_uint8(struct gbus *pgbus, RMuint32 byte_address, RMuint8 data);
++
++#endif /* !__RMBTYPES_H__ */
++
++#ifndef __RMSTATUS_H__
++typedef int RMstatus;
++#endif /* !__RMSTATUS_H__ */
++
++#endif
++
++#endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/tango2/tango2.h linuxmips-2.4.30/include/asm-mips/tango2/tango2.h
+--- linuxmips-2.4.30.ref/include/asm-mips/tango2/tango2.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/tango2/tango2.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,68 @@
++/*****************************************
++ Copyright Â© 2001-2003  
++ Sigma Designs, Inc. All Rights Reserved
++ Proprietary and Confidential
++ *****************************************/
++/**
++  @file   tango2.h
++  @brief  
++
++  <long description>
++
++  @author Emmanuel Michon
++  @date   2004-05-10
++*/
++
++#ifndef __TANGO2_H__
++#define __TANGO2_H__
++
++#include <linux/config.h>
++#include <asm/tango2/hardware.h>
++#include <asm/tango2/rmem86xxid.h>
++
++#define TANGO2_BASE_FREQUENCY	27000000 
++
++/* Baudrate setting */
++#ifdef CONFIG_QUICKTURN
++#define TANGO2_BASE_BAUD 1200
++#define TANGO2_CPU_FREQUENCY 250000
++#elif defined(CONFIG_TANGO2_SMP863X)
++#ifndef CONFIG_TANGO2_BASE_BAUD
++#define TANGO2_BASE_BAUD 38400
++#else
++#define TANGO2_BASE_BAUD CONFIG_TANGO2_BASE_BAUD
++#endif
++//#define TANGO2_CPU_FREQUENCY 333000000
++#else
++#error "Unsupported platform"
++#endif /* CONFIG_QUICKTURN */
++
++/* Memory size used by Linux */
++#ifndef CONFIG_TANGO2_MEMSIZE
++#ifdef CONFIG_QUICKTURN
++#define  TANGO2_SYSTEMRAM_ACTUALSIZE   (16*1024*1024)
++#elif defined(CONFIG_TANGO2_SMP863X)
++#define  TANGO2_SYSTEMRAM_ACTUALSIZE   (32*1024*1024)
++#else
++#error "Unsupported platform"
++#endif /* CONFIG_QUICKTURN */
++#else
++#define TANGO2_SYSTEMRAM_ACTUALSIZE    CONFIG_TANGO2_MEMSIZE
++#endif /* !CONFIG_TANGO2_MEMSIZE */
++
++#define TANGO2_CTRLIRQ 0
++#define TANGO2_CTRLFIQ 1
++#define TANGO2_CTRLIIQ 2
++
++#ifdef CONFIG_QUICKTURN
++#define SYS_clkgen_pll        SYS_clkgen3_pll
++#elif defined(CONFIG_TANGO2_SMP863X)
++#if (EM86XX_REVISION < 4)
++#define SYS_clkgen_pll        SYS_clkgen3_pll
++#else /* For ES4 or above */
++#define SYS_clkgen_pll        SYS_clkgen3_pll
++#endif
++#endif
++
++#endif // __TANGO2_H__
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/asm-mips/tango2/zboot.h linuxmips-2.4.30/include/asm-mips/tango2/zboot.h
+--- linuxmips-2.4.30.ref/include/asm-mips/tango2/zboot.h	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/include/asm-mips/tango2/zboot.h	2007-06-20 14:01:27.000000000 -0700
+@@ -0,0 +1,106 @@
++
++/*
++ * zBoot configuration 
++ */
++
++#ifndef __ZBOOT_H__
++#define __ZBOOT_H__
++
++#include "sigblock.h"
++
++#ifndef __ASSEMBLY__
++
++#define ZBOOT_ATTR_LOAD		0x00000001	/* Load */
++#define ZBOOT_ATTR_EXEC		0x00000002	/* Executable */
++#define ZBOOT_ATTR_GZIP		0x00000010	/* Compressed */
++#define ZBOOT_ATTR_ENCRYPT	0x00000100	/* Encrypted */
++#define ZBOOT_ATTR_FINAL	0x10000000	/* Last to process */
++
++#define ZBOOT_VERSION		0x02040000
++
++struct zboot_fhdr
++{
++	unsigned long signature;
++	unsigned long attributes;
++	unsigned long loadaddr;
++	unsigned long startaddr;
++	unsigned long checksum;
++	unsigned long version;
++	unsigned long size;
++	unsigned long enc_hdrsize;	
++};
++
++/* Defineition of zboot extension in signature block */
++#define ZBOOT_B0OFFSET_IDX	0
++#define ZBOOT_B1OFFSET_IDX	1
++#define ZBOOT_YAMON_SIG_LO	2
++#define ZBOOT_YAMON_SIG_HI	3
++#define ZBOOT_YAMON_EV_IDX	4
++#define ZBOOT_DEF_BAUD		5
++#define ZBOOT_UNUSED_1		6
++#define ZBOOT_UNUSED_2		7
++#define ZBOOT_PFLASH_ADDR	8
++#define ZBOOT_PFLASH_SIZE	9
++#define ZBOOT_PFLASH_PART1_SZ	10
++#define ZBOOT_PFLASH_PART1_OFT	11
++#define ZBOOT_PFLASH_PART2_SZ	12
++#define ZBOOT_PFLASH_PART2_OFT	13
++#define ZBOOT_PFLASH_PART3_SZ	14
++#define ZBOOT_PFLASH_PART3_OFT	15
++#define ZBOOT_PFLASH_PART4_SZ	16
++#define ZBOOT_PFLASH_PART4_OFT	17
++#define ZBOOT_PFLASH_PART5_SZ	18
++#define ZBOOT_PFLASH_PART5_OFT	19
++
++int process_zboot_record(void *flashaddr, struct signature_block *sigptr, int idx);
++
++#endif /* !__ASSEMBLY__ */
++
++#ifndef __ASSEMBLY__
++/* Accessor functions */
++static inline unsigned long bootimage_offset(struct signature_block *sigptr, int idx)
++{
++	switch(idx) {
++		case 0: return(sigptr->extension[ZBOOT_B0OFFSET_IDX]);
++		case 1: return(sigptr->extension[ZBOOT_B1OFFSET_IDX]);
++		default: break;
++	}
++	return(0);
++}
++
++static inline unsigned long zboot_default_baudrate(struct signature_block *sigptr)
++{
++	return(sigptr->extension[ZBOOT_DEF_BAUD]);
++}
++
++static inline int pflash_info(struct signature_block *sigptr, unsigned long *addr, unsigned long *size)
++{
++	*addr = *size = 0;
++	if ((sigptr->extension[ZBOOT_PFLASH_ADDR] == 0) || (sigptr->extension[ZBOOT_PFLASH_SIZE] == 0))
++		return(-1);
++	*addr = sigptr->extension[ZBOOT_PFLASH_ADDR];
++	*size = sigptr->extension[ZBOOT_PFLASH_SIZE];
++	return(0);
++}
++
++static inline int pflash_num_partitions(void)
++{
++	return(5);
++}
++
++/* To follow Linux MTD convention, idx starts from 1 instead of 0 */
++static inline int pflash_partition_info(struct signature_block *sigptr, int idx, unsigned long *offset, unsigned long *size)
++{
++	*offset = *size = 0;
++	if ((idx <= 0) || (idx > pflash_num_partitions()))
++		return(-1);
++	else {
++		*size = sigptr->extension[ZBOOT_PFLASH_PART1_SZ + (idx - 1) * 2];
++		*offset = sigptr->extension[ZBOOT_PFLASH_PART1_OFT + (idx - 1) * 2];
++	}
++	return(0);
++}
++#endif /* !__ASSEMBLY__ */
++
++#endif /* __ZBOOT_H__ */
++
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/config.h linuxmips-2.4.30/include/linux/config.h
+--- linuxmips-2.4.30.ref/include/linux/config.h	1998-03-17 14:17:00.000000000 -0800
++++ linuxmips-2.4.30/include/linux/config.h	2007-06-20 14:01:27.000000000 -0700
+@@ -3,4 +3,20 @@
+ 
+ #include <linux/autoconf.h>
+ 
++#ifdef CONFIG_TANGO2
++// emhack: we are sure this file is included by ***everybody***
++#include <asm/tango2/rmem86xxid.h>
++#include <asm/tango2/emhwlib_registers_tango2.h>
++#define EM86XX_MODE EM86XX_MODEID_STANDALONE
++#include <asm/mipsregs.h>
++#include <asm/addrspace.h>
++#define emprintk(x...) 					\
++do { 							\
++/*	the_REAL_printk("[0x%x %s %s() %d] ",read_c0_count(),__FILE__,__FUNCTION__,__LINE__); */    \
++	the_REAL_printk(x);					\
++} while (0)
++
++#define printk the_REAL_printk
++#endif /* CONFIG_TANGO2 */
++
+ #endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/include/linux/kernel.h linuxmips-2.4.30/include/linux/kernel.h
+--- linuxmips-2.4.30.ref/include/linux/kernel.h	2005-04-05 12:09:58.000000000 -0700
++++ linuxmips-2.4.30/include/linux/kernel.h	2007-06-20 14:01:27.000000000 -0700
+@@ -93,8 +93,7 @@
+ 
+ extern int session_of_pgrp(int pgrp);
+ 
+-asmlinkage int printk(const char * fmt, ...)
+-	__attribute__ ((format (printf, 1, 2)));
++int the_REAL_printk(const char * fmt, ...);
+ 
+ static inline void console_silent(void)
+ {
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/init/do_mounts.c linuxmips-2.4.30/init/do_mounts.c
+--- linuxmips-2.4.30.ref/init/do_mounts.c	2005-01-19 18:19:24.000000000 -0800
++++ linuxmips-2.4.30/init/do_mounts.c	2007-06-20 14:01:27.000000000 -0700
+@@ -276,6 +276,12 @@
+ 			dev++;
+ 		} while (dev->name);
+ 	}
++
++	/* If the rest starts with a '/', skip it */
++	if (*line == '/')
++		line++;
++
++ 	offs = simple_strtoul(line, &end, base?10:16);
+ 	offs = simple_strtoul(line, &end, base?10:16);
+ 	if (*end)
+ 		offs = 0;
+@@ -670,7 +676,11 @@
+ 		write(out_fd, buf, BLOCK_SIZE);
+ #if !defined(CONFIG_ARCH_S390) && !defined(CONFIG_PPC_ISERIES)
+ 		if (!(i % 16)) {
++#ifdef CONFIG_TANGO2
++			the_REAL_printk("%c\b", rotator[rotate & 0x3]);
++#else
+ 			printk("%c\b", rotator[rotate & 0x3]);
++#endif /* CONFIG_TANGO2 */
+ 			rotate++;
+ 		}
+ #endif
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/kernel/printk.c linuxmips-2.4.30/kernel/printk.c
+--- linuxmips-2.4.30.ref/kernel/printk.c	2004-11-18 16:28:52.000000000 -0800
++++ linuxmips-2.4.30/kernel/printk.c	2007-06-20 14:01:27.000000000 -0700
+@@ -409,7 +409,7 @@
+  * then changes console_loglevel may break. This is because console_loglevel
+  * is inspected when the actual printing occurs.
+  */
+-asmlinkage int printk(const char *fmt, ...)
++int the_REAL_printk(const char *fmt, ...)
+ {
+ 	va_list args;
+ 	unsigned long flags;
+@@ -478,7 +478,7 @@
+ out:
+ 	return printed_len;
+ }
+-EXPORT_SYMBOL(printk);
++EXPORT_SYMBOL(the_REAL_printk);
+ 
+ /**
+  * acquire_console_sem - lock the console system for exclusive use.
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/Makefile linuxmips-2.4.30/Makefile
+--- linuxmips-2.4.30.ref/Makefile	2005-04-05 12:09:54.000000000 -0700
++++ linuxmips-2.4.30/Makefile	2007-06-20 14:01:27.000000000 -0700
+@@ -1,9 +1,13 @@
+ VERSION = 2
+ PATCHLEVEL = 4
+ SUBLEVEL = 30
+-EXTRAVERSION =
++EXTRAVERSION = -tango2
+ 
++ifneq ($(RELEASE_NAME),)
++KERNELRELEASE=$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)-$(RELEASE_NAME)
++else
+ KERNELRELEASE=$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)
++endif
+ 
+ ARCH = mips
+ KERNELPATH=kernel-$(shell echo $(KERNELRELEASE) | sed -e "s/-//g")
+@@ -59,7 +63,7 @@
+ include .config
+ ifeq (.depend,$(wildcard .depend))
+ include .depend
+-do-it-all:	Version vmlinux
++do-it-all:	Version vmlinux vmlinux.bin vmlinux.gz
+ else
+ CONFIGURATION = depend
+ do-it-all:	depend
+@@ -201,7 +205,7 @@
+ # files removed with 'make clean'
+ CLEAN_FILES = \
+ 	kernel/ksyms.lst include/linux/compile.h \
+-	vmlinux System.map \
++	vmlinux vmlinux.bin vmlinux.gz vmlinux.dasm System.map \
+ 	.tmp* \
+ 	drivers/char/consolemap_deftbl.c drivers/video/promcon_tbl.c \
+ 	drivers/char/conmakehash \
+@@ -296,6 +300,12 @@
+ 		-o vmlinux
+ 	$(NM) vmlinux | grep -v '\(compiled\)\|\(\.o$$\)\|\( [aUw] \)\|\(\.\.ng$$\)\|\(LASH[RL]DI\)' | sort > System.map
+ 
++vmlinux.bin: vmlinux
++	$(OBJCOPY) -O binary vmlinux vmlinux.bin
++
++vmlinux.gz: vmlinux.bin
++	gzip -c9 vmlinux.bin > vmlinux.gz
++
+ symlinks:
+ 	rm -f include/asm
+ 	( cd include ; ln -sf asm-$(ARCH) asm)
+@@ -340,15 +350,12 @@
+ 	@echo -n \#`cat .version` > .ver1
+ 	@if [ -n "$(CONFIG_SMP)" ] ; then echo -n " SMP" >> .ver1; fi
+ 	@if [ -f .name ]; then  echo -n \-`cat .name` >> .ver1; fi
+-	@LANG=C echo ' '`date` >> .ver1
++	@LANG=C echo ' Wed Mar 16 16:16:16 CET 2005' >> .ver1
+ 	@echo \#define UTS_VERSION \"`cat .ver1 | $(uts_truncate)`\" > .ver
+-	@LANG=C echo \#define LINUX_COMPILE_TIME \"`date +%T`\" >> .ver
+-	@echo \#define LINUX_COMPILE_BY \"`whoami`\" >> .ver
+-	@echo \#define LINUX_COMPILE_HOST \"`hostname | $(uts_truncate)`\" >> .ver
+-	@([ -x /bin/dnsdomainname ] && /bin/dnsdomainname > .ver1) || \
+-	 ([ -x /bin/domainname ] && /bin/domainname > .ver1) || \
+-	 echo > .ver1
+-	@echo \#define LINUX_COMPILE_DOMAIN \"`cat .ver1 | $(uts_truncate)`\" >> .ver
++	@LANG=C echo \#define LINUX_COMPILE_TIME \"16:16:16\" >> .ver
++	@echo \#define LINUX_COMPILE_BY \"by_x\" >> .ver
++	@echo \#define LINUX_COMPILE_HOST \"host_x\" >> .ver
++	@echo \#define LINUX_COMPILE_DOMAIN \"domain_x\" >> .ver
+ 	@echo \#define LINUX_COMPILER \"`$(CC) $(CFLAGS) -v 2>&1 | tail -n 1`\" >> .ver
+ 	@mv -f .ver $@
+ 	@rm -f .ver1
+@@ -501,7 +508,7 @@
+ ifdef CONFIG_MODVERSIONS
+ 	$(MAKE) update-modverfile
+ endif
+-	scripts/mkdep -- `find $(FINDHPATH) \( -name SCCS -o -name .svn \) -prune -o -follow -name \*.h ! -name modversions.h -print` > .hdepend
++	find $(FINDHPATH) \( -name SCCS -o -name .svn \) -prune -o -follow -name \*.h ! -name modversions.h -print | xargs scripts/mkdep | cat > .hdepend
+ 	scripts/mkdep -- init/*.c > .depend
+ 
+ ifdef CONFIG_MODVERSIONS
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linuxmips-2.4.30.ref/README.1000.tango2.patch linuxmips-2.4.30/README.1000.tango2.patch
+--- linuxmips-2.4.30.ref/README.1000.tango2.patch	1969-12-31 16:00:00.000000000 -0800
++++ linuxmips-2.4.30/README.1000.tango2.patch	2007-06-20 14:05:45.000000000 -0700
+@@ -0,0 +1,19 @@
++Feature:
++--------
++Initial and shared support for SMP863x (Shuttle/ES1-3/ES4-9/RevA-C).
++
++Prerequisite patch numbers:
++---------------------------
++0000
++
++Primary author:
++---------------
++Emmanuel Michon/YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------
++CONFIG_TANGO2

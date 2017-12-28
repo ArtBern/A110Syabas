@@ -1,0 +1,82 @@
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux.ref/drivers/scsi/atari_scsi.c linux/drivers/scsi/atari_scsi.c
+--- linux.ref/drivers/scsi/atari_scsi.c	2002-06-26 15:36:05.000000000 -0700
++++ linux/drivers/scsi/atari_scsi.c	2005-03-21 19:02:22.000000000 -0800
+@@ -993,7 +993,7 @@
+ 		opcode == READ_BUFFER)
+ 		return( CMD_SURELY_BYTE_MODE );
+ 	else if (opcode == READ_6 || opcode == READ_10 ||
+-		 opcode == 0xa8 /* READ_12 */ || opcode == READ_REVERSE ||
++		 opcode == 0xa8 /* READ_12 */ || opcode == READ_REVERSED ||
+ 		 opcode == RECOVER_BUFFERED_DATA) {
+ 		/* In case of a sequential-access target (tape), special care is
+ 		 * needed here: The transfer is block-mode only if the 'fixed' bit is
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux.ref/drivers/usb/microtek.c linux/drivers/usb/microtek.c
+--- linux.ref/drivers/usb/microtek.c	2005-03-21 15:18:58.000000000 -0800
++++ linux/drivers/usb/microtek.c	2005-03-21 19:02:42.000000000 -0800
+@@ -242,7 +242,7 @@
+ 	case READ_6: what = "READ_6"; break;
+ 	case WRITE_6: what = "WRITE_6"; break;
+ 	case SEEK_6: what = "SEEK_6"; break;
+-	case READ_REVERSE: what = "READ_REVERSE"; break;
++	case READ_REVERSED: what = "READ_REVERSED"; break;
+ 	case WRITE_FILEMARKS: what = "WRITE_FILEMARKS"; break;
+ 	case SPACE: what = "SPACE"; break;
+ 	case INQUIRY: what = "INQUIRY"; break;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux.ref/drivers/usb/storage/debug.c linux/drivers/usb/storage/debug.c
+--- linux.ref/drivers/usb/storage/debug.c	2002-06-26 15:36:14.000000000 -0700
++++ linux/drivers/usb/storage/debug.c	2005-03-21 19:03:01.000000000 -0800
+@@ -60,7 +60,7 @@
+ 	case READ_6: what = "READ_6"; break;
+ 	case WRITE_6: what = "WRITE_6"; break;
+ 	case SEEK_6: what = "SEEK_6"; break;
+-	case READ_REVERSE: what = "READ_REVERSE"; break;
++	case READ_REVERSED: what = "READ_REVERSED"; break;
+ 	case WRITE_FILEMARKS: what = "WRITE_FILEMARKS"; break;
+ 	case SPACE: what = "SPACE"; break;
+ 	case INQUIRY: what = "INQUIRY"; break;
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux.ref/drivers/usb/storage/transport.c linux/drivers/usb/storage/transport.c
+--- linux.ref/drivers/usb/storage/transport.c	2005-03-21 15:18:58.000000000 -0800
++++ linux/drivers/usb/storage/transport.c	2005-03-21 19:03:31.000000000 -0800
+@@ -157,7 +157,7 @@
+ 	   READ_HEADER 44     !!! This was L
+ 	   READ_LONG 3e
+ 	   READ_POSITION 34   !!! This should be V but conflicts with PRE-FETCH
+-	   READ_REVERSE 0f
++	   READ_REVERSED 0f
+ 	   READ_SUB-CHANNEL 42 !!! Is this in bytes?
+ 	   READ_TOC 43         !!! Is this in bytes?
+ 	   READ_UPDATED_BLOCK 2d
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux.ref/include/scsi/scsi.h linux/include/scsi/scsi.h
+--- linux.ref/include/scsi/scsi.h	2003-11-16 17:07:46.000000000 -0800
++++ linux/include/scsi/scsi.h	2005-03-21 19:02:01.000000000 -0800
+@@ -27,7 +27,7 @@
+ #define READ_6                0x08
+ #define WRITE_6               0x0a
+ #define SEEK_6                0x0b
+-#define READ_REVERSE          0x0f
++#define READ_REVERSED         0x0f
+ #define WRITE_FILEMARKS       0x10
+ #define SPACE                 0x11
+ #define INQUIRY               0x12
+diff -Naur --exclude=CVS --exclude='*.o' --exclude='*.a' --exclude='*.so' --exclude='*.elf' --exclude=System.map --exclude=Makefile.d --exclude='*log' --exclude='*log2' --exclude='*~' --exclude='.*~' --exclude='.#*' --exclude='*.bak' --exclude='*.orig' --exclude='*.rej' --exclude='core.[0-9]*' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=.depend --exclude='.*.o.flags' --exclude='*.gz' --exclude=vmlinux --exclude=vmlinux.bin --exclude=yamon-02.06-SIGMADESIGNS-01_el.bin linux.ref/README.1004.scsi.patch linux/README.1004.scsi.patch
+--- linux.ref/README.1004.scsi.patch	1969-12-31 16:00:00.000000000 -0800
++++ linux/README.1004.scsi.patch	2005-03-21 19:05:07.000000000 -0800
+@@ -0,0 +1,18 @@
++Feature:
++--------
++Renaming SCSI operation READ_REVERSE to READ_REVERSED to avoid conflict.
++
++Prerequisite patch numbers:
++---------------------------
++1000
++
++Primary author:
++---------------
++YH Lin
++
++Related to which chip version SMP863x x=?
++-----------------------------------------
++all
++
++(linux patches) which CONFIG_... are provided:
++----------------------------------------------

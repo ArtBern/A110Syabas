@@ -60,8 +60,8 @@ CROSS_COMPILE = mips-linux-
 endif
 
 ifeq ($(PLATFORM),SIGMA)
-LINUX_SRC = /opt/rt2870/A110Syabas/linux-2.6.15
-CROSS_COMPILE = /opt/rt2870/A110Syabas/smp86xx_toolchain.20080505/build_mipsel_nofpu/staging_dir/bin/mipsel-linux-
+LINUX_SRC = /opt/rt2870/A110Syabas/linux-2.6.15.opentvixdev
+CROSS_COMPILE = /opt/rt2870/A110Syabas/smp86xx_toolchain.20080505/build_mipsel/staging_dir/bin/mipsel-linux-
 endif
 
 ifeq ($(PLATFORM),SIGMA_8622)
